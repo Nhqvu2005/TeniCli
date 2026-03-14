@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { loadConfig, loadStoredConfig, saveStoredConfig, MODELS, type ProviderType } from './config'
 import { ChatSession } from './chat'
 import { fileTracker } from './tools'
