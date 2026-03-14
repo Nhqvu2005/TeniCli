@@ -10,6 +10,19 @@ export type ChatEvent =
   | { type: 'usage'; input: number; output: number }
   | { type: 'done'; stopReason: string }
   | { type: 'error'; message: string }
+  | { type: 'rate_limit'; limits: RateLimits }
+
+export interface RateLimits {
+  requestsLimit?: number
+  requestsRemaining?: number
+  requestsReset?: string
+  tokensLimit?: number
+  tokensRemaining?: number
+  tokensReset?: string
+}
+
+// Global store for last known rate limits
+export let lastRateLimits: RateLimits = {}
 
 // ── Message types (internal, Anthropic-like) ─────────────────────
 export interface Message {
@@ -219,6 +232,36 @@ async function doFetch(url: string, body: any, extraHeaders: Record<string, stri
     const t = await res.text()
     throw new Error(`API ${res.status}: ${t.slice(0, 300)}`)
   }
+  // Capture rate limit headers
+  const rl: RateLimits = {}
+  // Anthropic headers
+  const arl = res.headers.get('anthropic-ratelimit-requests-limit')
+  if (arl) rl.requestsLimit = parseInt(arl)
+  const arr = res.headers.get('anthropic-ratelimit-requests-remaining')
+  if (arr) rl.requestsRemaining = parseInt(arr)
+  const arrst = res.headers.get('anthropic-ratelimit-requests-reset')
+  if (arrst) rl.requestsReset = arrst
+  const atl = res.headers.get('anthropic-ratelimit-tokens-limit')
+  if (atl) rl.tokensLimit = parseInt(atl)
+  const atr = res.headers.get('anthropic-ratelimit-tokens-remaining')
+  if (atr) rl.tokensRemaining = parseInt(atr)
+  const atrst = res.headers.get('anthropic-ratelimit-tokens-reset')
+  if (atrst) rl.tokensReset = atrst
+  // OpenAI headers
+  const orl = res.headers.get('x-ratelimit-limit-requests')
+  if (orl) rl.requestsLimit = parseInt(orl)
+  const orr = res.headers.get('x-ratelimit-remaining-requests')
+  if (orr) rl.requestsRemaining = parseInt(orr)
+  const orrst = res.headers.get('x-ratelimit-reset-requests')
+  if (orrst) rl.requestsReset = orrst
+  const otl = res.headers.get('x-ratelimit-limit-tokens')
+  if (otl) rl.tokensLimit = parseInt(otl)
+  const otr = res.headers.get('x-ratelimit-remaining-tokens')
+  if (otr) rl.tokensRemaining = parseInt(otr)
+  const otrst = res.headers.get('x-ratelimit-reset-tokens')
+  if (otrst) rl.tokensReset = otrst
+
+  if (Object.keys(rl).length > 0) lastRateLimits = rl
   return res
 }
 

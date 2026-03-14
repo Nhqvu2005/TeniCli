@@ -1,6 +1,6 @@
 {
   "name": "tenicli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Lightweight AI coding CLI — fast, compact, multi-provider",
   "type": "module",
   "bin": {

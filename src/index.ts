@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { loadConfig, loadStoredConfig, saveStoredConfig, MODELS, type ProviderType } from './config'
 import { ChatSession } from './chat'
+import { lastRateLimits, type RateLimits } from './provider'
 import { fileTracker } from './tools'
 import { header, readInput, readLine, selectOption, drawBox, c, sym, errorLog } from './ui'
 import { writeFileSync, existsSync } from 'fs'
@@ -255,6 +256,7 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
     ${c.blue('/init')}     Create TENICLI.md template
     ${c.blue('/remote')}   Start web remote access
     ${c.blue('/history')}  Browse past conversations
+    ${c.blue('/quota')}    Show API rate limits
     ${c.blue('/update')}   Update to latest version
     ${c.blue('/clear')}    New conversation
     ${c.blue('/cost')}     Show token usage
@@ -263,15 +265,47 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
       return true
 
     case '/remote': {
-      const { getLocalIPs, renderQR } = await import('./qr')
-      const port = 3000
+      const { getLocalIPs } = await import('./qr')
+      const { startServer, getActiveServers } = await import('./server')
+      const servers = getActiveServers()
+
+      if (servers.size > 0) {
+        // Show active servers + option to add new
+        const opts = Array.from(servers.entries()).map(([port, s]) => ({
+          label: `Port ${port} ${c.green('\u25cf')}`,
+          desc: `password: ${s.password}`,
+        }))
+        opts.push({ label: c.cyan('+ New server'), desc: 'start on random port' })
+        opts.push({ label: c.yellow('Stop all'), desc: 'close all remote servers' })
+
+        const idx = await selectOption('Remote servers', opts)
+        if (idx === -1) { console.log(`  ${c.gray('Cancelled')}`); return true }
+
+        if (idx < servers.size) {
+          // Show info about existing server
+          const entry = Array.from(servers.entries())[idx]
+          const ips = getLocalIPs()
+          const ip = ips[0] || 'localhost'
+          console.log(`\n  ${c.gray('URL:')} ${c.cyan(`http://${ip}:${entry[0]}`)}`)
+          console.log(`  ${c.gray('Password:')} ${c.yellow(entry[1].password)}`)
+          return true
+        } else if (idx === servers.size) {
+          // Fall through to create new
+        } else {
+          // Stop all
+          for (const [port, s] of servers) { s.close() }
+          console.log(`  ${sym.ok} All remote servers stopped`)
+          return true
+        }
+      }
+
+      // Create new server on random port
+      const port = 3000 + Math.floor(Math.random() * 7000) // 3000-9999
       const password = randomBytes(6).toString('hex')
       const ips = getLocalIPs()
       const localIP = ips[0] || 'localhost'
       const url = `http://${localIP}:${port}`
 
-      // Start server in background
-      const { startServer } = await import('./server')
       startServer(port, password)
 
       console.log()
@@ -280,16 +314,41 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
         '',
         `${c.gray('URL:')}      ${c.cyan(url)}`,
         `${c.gray('Password:')} ${c.yellow(password)}`,
+        `${c.gray('Port:')}     ${c.blue(String(port))}`,
         '',
         c.gray('Anyone on the same WiFi can access this URL.'),
-        c.gray('For public access, use VS Code Port Forward or ngrok.'),
+        c.gray('Use /remote again to manage servers.'),
       ], 58)
       console.log()
-      console.log(renderQR(url))
-      console.log()
-      console.log(`  ${c.gray('Press Ctrl+C to stop the server')}`)
-      console.log()
+      return true
+    }
 
+    case '/quota': {
+      const rl = lastRateLimits
+      if (!rl.requestsLimit && !rl.tokensLimit) {
+        console.log(`  ${c.gray('No rate limit data yet. Send a message first.')}`)
+        return true
+      }
+
+      const lines: string[] = [c.bold('API Rate Limits'), '']
+      if (rl.requestsLimit !== undefined) {
+        const used = rl.requestsLimit - (rl.requestsRemaining || 0)
+        const pct = Math.round((rl.requestsRemaining || 0) / rl.requestsLimit * 100)
+        const color = pct > 50 ? c.green : pct > 20 ? c.yellow : c.pink
+        lines.push(`${c.gray('Requests:')}  ${color(String(rl.requestsRemaining))}/${rl.requestsLimit} remaining ${c.gray(`(${pct}%)`)}`)
+      }
+      if (rl.tokensLimit !== undefined) {
+        const pct = Math.round((rl.tokensRemaining || 0) / rl.tokensLimit * 100)
+        const color = pct > 50 ? c.green : pct > 20 ? c.yellow : c.pink
+        lines.push(`${c.gray('Tokens:')}    ${color(String(rl.tokensRemaining?.toLocaleString()))}/${rl.tokensLimit.toLocaleString()} remaining ${c.gray(`(${pct}%)`)}`)
+      }
+      if (rl.requestsReset) {
+        const reset = new Date(rl.requestsReset)
+        lines.push(`${c.gray('Resets at:')} ${c.cyan(reset.toLocaleTimeString())}`)
+      }
+
+      console.log()
+      drawBox(lines, 58)
       return true
     }
 
