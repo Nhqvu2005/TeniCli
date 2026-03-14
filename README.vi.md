@@ -1,13 +1,11 @@
 <div align="center">
 <pre>
-     /\_____/\
-    │       │
-    │ ■   ■ │
-    │       │
-    ╰─╯╰─╯╰─╯
+      /\_____/\
+     │███████│
+     │██  █  │    TeniCLI
+     │███████│
+     ╰─╯╰─╯╰─╯
 </pre>
-
-# TeniCLI
 
 **⚡ Trợ lý AI lập trình siêu nhẹ cho terminal — nhanh, đa nền tảng, tự chủ.**
 

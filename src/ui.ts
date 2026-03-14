@@ -39,17 +39,15 @@ export const sym = {
 // ── Mascot ───────────────────────────────────────────────────────
 export function mascot(): string {
   const p = (s: string) => c.purple(s)
-  const b = (s: string) => c.blue(s)
-  const g = (s: string) => c.gray(s)
   const title = c.bold(c.blue('TeniCLI'))
   const ver = c.gray('v0.1.0')
 
   return [
-    `     ${p('/\\_____/\\')}`,
-    `    ${b('│')}       ${b('│')}`,
-    `    ${b('│')} ${g('■')}   ${g('■')} ${b('│')}   ${title} ${ver}`,
-    `    ${b('│')}       ${b('│')}`,
-    `    ${b('╰─╯╰─╯╰─╯')}`
+    `      ${p('/\\_____/\\')}`,
+    `     ${p('│███████│')}`,
+    `     ${p('│██  █  │')}    ${title} ${ver}`,
+    `     ${p('│███████│')}`,
+    `     ${p('╰─╯╰─╯╰─╯')}`
   ].join('\n')
 }
 

@@ -1,13 +1,11 @@
 <div align="center">
 <pre>
-     /\_____/\
-    │       │
-    │ ■   ■ │
-    │       │
-    ╰─╯╰─╯╰─╯
+      /\_____/\
+     │███████│
+     │██  █  │    TeniCLI
+     │███████│
+     ╰─╯╰─╯╰─╯
 </pre>
-
-# TeniCLI
 
 **⚡ Lightweight AI coding agent for your terminal — fast, compact, multi-provider.**
 
