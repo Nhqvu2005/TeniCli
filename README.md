@@ -56,6 +56,11 @@ teni -m gpt-4o           # Override model
 |---------|-------------|
 | `/model` | Switch AI model (Anthropic / OpenAI) |
 | `/auth` | Configure API key |
+| `/mode` | Toggle ask/auto (confirm before write/exec) |
+| `/compact` | Summarize conversation to save tokens |
+| `/diff` | List all files changed this session |
+| `/undo` | Revert last file write |
+| `/init` | Create `TENICLI.md` project template |
 | `/clear` | Start new conversation |
 | `/cost` | Show token usage |
 | `/help` | List commands |
