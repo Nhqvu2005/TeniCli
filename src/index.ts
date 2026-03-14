@@ -255,7 +255,7 @@ async function main() {
   }
 
   // Interactive — go straight to chat
-  header()
+  header(VERSION)
   const modelName = MODELS.find(m => m.id === cfg.provider.model)?.name || cfg.provider.model
   const modeLabel = session.autoMode ? c.yellow('auto') : c.green('ask')
   

@@ -95,13 +95,13 @@ export function drawBox(lines: string[], width = 60) {
 }
 
 // ── Output helpers ───────────────────────────────────────────────
-export function header() {
+export function header(version = '0.0.0') {
   console.clear()
   console.log()
   console.log(mascot())
   console.log()
   drawBox([
-    c.gray('type to chat') + ` ${sym.dot} ` + c.gray('/help for commands') + ` ${sym.dot} ` + c.gray('v0.1.0'),
+    c.gray('type to chat') + ` ${sym.dot} ` + c.gray('/help for commands') + ` ${sym.dot} ` + c.gray(`v${version}`),
   ], 60)
   console.log()
 }
@@ -127,8 +127,18 @@ export class Spinner {
 
 // Slash commands for autocomplete
 const SLASH_COMMANDS = [
-  '/model', '/auth', '/mode', '/compact', '/diff', '/undo',
-  '/init', '/update', '/clear', '/cost', '/help', '/exit'
+  { cmd: '/model',   desc: 'switch AI model' },
+  { cmd: '/auth',    desc: 'set API key' },
+  { cmd: '/mode',    desc: 'toggle mode' },
+  { cmd: '/compact', desc: 'toggle compact' },
+  { cmd: '/diff',    desc: 'show file changes' },
+  { cmd: '/undo',    desc: 'revert last change' },
+  { cmd: '/init',    desc: 'init project context' },
+  { cmd: '/update',  desc: 'update tenicli' },
+  { cmd: '/clear',   desc: 'clear screen' },
+  { cmd: '/cost',    desc: 'show token usage' },
+  { cmd: '/help',    desc: 'list commands' },
+  { cmd: '/exit',    desc: 'quit' },
 ]
 
 export function readLine(prompt: string, enableHints = false): Promise<string> {
@@ -153,54 +163,96 @@ export function readLine(prompt: string, enableHints = false): Promise<string> {
       return
     }
 
-    // Raw mode: character-by-character with autocomplete
+    // Raw mode: character-by-character with dropdown autocomplete
     let line = ''
-    let hintLen = 0
+    let menuLines = 0   // number of dropdown lines currently rendered
+    let selIdx = 0      // currently highlighted item in dropdown
     const wasRaw = process.stdin.isRaw
     process.stdin.setRawMode(true)
     if (!process.stdin.readableEncoding) process.stdin.setEncoding('utf8')
     process.stdin.resume()
 
-    const clearHint = () => {
-      if (hintLen > 0) {
-        // Cursor is already at user's input position (showHint moved it back)
-        // Just clear everything to the right
-        process.stdout.write('\x1b[0K')
-        hintLen = 0
-      }
+    const getMatches = () => {
+      if (!line.startsWith('/') || line.length < 1) return []
+      return SLASH_COMMANDS.filter(c => c.cmd.startsWith(line))
     }
 
-    const showHint = () => {
-      clearHint()
-      if (line.startsWith('/') && line.length > 1) {
-        const matches = SLASH_COMMANDS.filter(cmd => cmd.startsWith(line))
-        if (matches.length > 0) {
-          const rest = matches[0].slice(line.length)
-          if (rest) {
-            const hint = c.gray(rest)
-            process.stdout.write(hint)
-            hintLen = rest.length
-            // Move cursor back
-            process.stdout.write(`\x1b[${rest.length}D`)
-          }
+    const clearMenu = () => {
+      if (menuLines > 0) {
+        // Clear each line below, then move cursor back up
+        for (let i = 0; i < menuLines; i++) {
+          process.stdout.write('\x1b[1B')  // move down
+          process.stdout.write('\x1b[2K')  // clear entire line
+        }
+        // Move back up to the input line
+        process.stdout.write(`\x1b[${menuLines}A`)
+        menuLines = 0
+      }
+      // Clear any ghost text on current line to the right
+      process.stdout.write('\x1b[0K')
+    }
+
+    const renderMenu = () => {
+      clearMenu()
+      const matches = getMatches()
+      if (matches.length === 0) return
+      if (selIdx >= matches.length) selIdx = matches.length - 1
+      if (selIdx < 0) selIdx = 0
+
+      // Save cursor position
+      process.stdout.write('\x1b[s')
+      for (let i = 0; i < matches.length; i++) {
+        process.stdout.write('\n\x1b[2K')  // next line, clear it
+        const m = matches[i]
+        if (i === selIdx) {
+          // Highlighted item: blue background
+          process.stdout.write(`    ${c.blue(c.bold(m.cmd))} ${c.gray(m.desc)}`)
+        } else {
+          process.stdout.write(`    ${c.gray(m.cmd)} ${c.gray(c.dim(m.desc))}`)
         }
       }
+      menuLines = matches.length
+      // Restore cursor position back to input line
+      process.stdout.write('\x1b[u')
     }
 
+    let escBuf = ''
     const onData = (chunk: any) => {
       const str = typeof chunk === 'string' ? chunk : chunk.toString('utf8')
-      for (const ch of str) {
+      for (let ci = 0; ci < str.length; ci++) {
+        const ch = str[ci]
         const code = ch.charCodeAt(0)
-        
+
+        // Handle escape sequences (arrow keys)
+        if (escBuf.length > 0 || code === 27) {
+          escBuf += ch
+          if (escBuf.length === 1) continue // wait for more
+          if (escBuf.length === 2 && escBuf[1] === '[') continue // wait for more
+          if (escBuf.length >= 3) {
+            const matches = getMatches()
+            if (escBuf === '\x1b[A' && matches.length > 0) { // Up
+              selIdx = (selIdx - 1 + matches.length) % matches.length
+              renderMenu()
+            } else if (escBuf === '\x1b[B' && matches.length > 0) { // Down
+              selIdx = (selIdx + 1) % matches.length
+              renderMenu()
+            }
+            escBuf = ''
+            continue
+          }
+          continue
+        }
+
         // Ctrl+C
         if (code === 3) {
+          clearMenu()
           process.stdin.setRawMode(wasRaw)
           process.stdout.write('\n')
           process.exit(0)
         }
         // Ctrl+D
         if (code === 4) {
-          clearHint()
+          clearMenu()
           process.stdin.setRawMode(wasRaw)
           cleanup()
           reject(new Error('EOF'))
@@ -208,7 +260,17 @@ export function readLine(prompt: string, enableHints = false): Promise<string> {
         }
         // Enter
         if (code === 13 || code === 10) {
-          clearHint()
+          const matches = getMatches()
+          // If dropdown is visible and a match is selected, accept it
+          if (matches.length > 0 && line !== matches[selIdx].cmd) {
+            clearMenu()
+            const selected = matches[selIdx].cmd
+            // Erase current typed text and write selected command
+            process.stdout.write('\b \b'.repeat(line.length))
+            line = selected
+            process.stdout.write(line)
+          }
+          clearMenu()
           process.stdin.setRawMode(wasRaw)
           process.stdout.write('\n')
           cleanup()
@@ -218,23 +280,24 @@ export function readLine(prompt: string, enableHints = false): Promise<string> {
         // Backspace
         if (code === 127 || code === 8) {
           if (line.length > 0) {
-            clearHint()
+            clearMenu()
             line = line.slice(0, -1)
             process.stdout.write('\b \b')
-            showHint()
+            selIdx = 0
+            renderMenu()
           }
           continue
         }
-        // Tab — autocomplete
+        // Tab — accept selected completion
         if (code === 9) {
-          if (line.startsWith('/')) {
-            const matches = SLASH_COMMANDS.filter(cmd => cmd.startsWith(line))
-            if (matches.length > 0) {
-              clearHint()
-              const rest = matches[0].slice(line.length)
-              line = matches[0]
-              process.stdout.write(rest)
-            }
+          const matches = getMatches()
+          if (matches.length > 0) {
+            clearMenu()
+            const selected = matches[selIdx].cmd
+            const rest = selected.slice(line.length)
+            line = selected
+            process.stdout.write(rest)
+            renderMenu()
           }
           continue
         }
@@ -242,10 +305,11 @@ export function readLine(prompt: string, enableHints = false): Promise<string> {
         if (code < 32) continue
         
         // Regular character
-        clearHint()
+        clearMenu()
         line += ch
         process.stdout.write(ch)
-        showHint()
+        selIdx = 0
+        renderMenu()
       }
     }
     const cleanup = () => { process.stdin.removeListener('data', onData) }
