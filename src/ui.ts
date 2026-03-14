@@ -129,17 +129,19 @@ export class Spinner {
 export function readLine(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
     process.stdout.write(prompt)
-    const chunks: Buffer[] = []
-    const onData = (chunk: Buffer) => {
-      if (chunk[0] === 3) { process.stdout.write('\n'); process.exit(0) }
-      if (chunk[0] === 4) { cleanup(); reject(new Error('EOF')); return }
-      chunks.push(chunk)
-      const str = Buffer.concat(chunks).toString('utf8')
-      const nl = str.indexOf('\n')
-      if (nl !== -1) { cleanup(); resolve(str.slice(0, nl).replace(/\r$/, '')) }
+    let buf = ''
+    const onData = (chunk: any) => {
+      const str = typeof chunk === 'string' ? chunk : chunk.toString('utf8')
+      // Ctrl+C
+      if (str.charCodeAt(0) === 3) { process.stdout.write('\n'); process.exit(0) }
+      // Ctrl+D (EOF)
+      if (str.charCodeAt(0) === 4) { cleanup(); reject(new Error('EOF')); return }
+      buf += str
+      const nl = buf.indexOf('\n')
+      if (nl !== -1) { cleanup(); resolve(buf.slice(0, nl).replace(/\r$/, '')) }
     }
     const cleanup = () => { process.stdin.removeListener('data', onData) }
-    process.stdin.setEncoding('utf8' as any)
+    if (!process.stdin.readableEncoding) process.stdin.setEncoding('utf8')
     process.stdin.on('data', onData)
     process.stdin.resume()
   })
