@@ -38,27 +38,30 @@ export const sym = {
 
 // ── Mascot ───────────────────────────────────────────────────────
 export function mascot(): string {
-  // Pad strings to exact character widths before applying any ANSI color codes
-  // to prevent terminal formatters from miscalculating the display width.
+  // Use exclusively full blocks (█) to prevent tearing from varying terminal line heights
   const ghost = [
-    "   ▄██████▄   ",
-    "  ██████████  ",
-    "  ██  ██  ██  ", // Eyes (White background implied by space)
-    "  ██ ▄██ ▄██  ", // Pupils (looking right)
-    "  ██████████  ",
-    "  ▀█▀▀██▀▀█▀  "
-  ].map(s => c.cyan(s.padEnd(14, ' ')))
+    "      ██      ██    ",
+    "     ████    ████   ",
+    "    ██████████████  ",
+    "    ██          ██  ", // Eyes (White background implied by space)
+    "    ██   ██   ████  ", // Pupils (looking right)
+    "    ██████████████  ",
+    "    ██████████████  ",
+    "    ███  ████  ███  "
+  ].map(s => c.cyan(s))
 
   const text = [
-    "",
-    "",
-    "   ▀█▀ ▄█▄ █▄ █ ▄█   ▄█▄ █   ▄█▄",
-    "    █  █▄   █▀█ █    █   █    █ ",
-    "    █  █▄▄ ▄█ █ █▄   █▄▄ █▄▄ ▄█▄",
-    ""
-  ].map(s => c.blue(s.padEnd(32, ' ')))
+    "  ",
+    "  ",
+    "   █████ █████ █   █ ███   ████ █     ███ ",
+    "     █   █     ██  █  █   █     █      █  ",
+    "     █   ████  █ █ █  █   █     █      █  ",
+    "     █   █     █  ██  █   █     █      █  ",
+    "     █   █████ █   █ ███   ████ █████ ███ ",
+    "  "
+  ].map(s => c.blue(s))
 
-  return ghost.map((gL, i) => `${gL}  ${text[i]}`).join('\n')
+  return ghost.map((gL, i) => `${gL}${text[i]}`).join('\n')
 }
 
 // ── Output helpers ───────────────────────────────────────────────
@@ -66,7 +69,7 @@ export function header() {
   console.log()
   console.log(mascot())
   console.log()
-  console.log(c.gray('    ────────────────────────────────────────────────'))
+  console.log(c.gray('    ──────────────────────────────────────────────────────────────────────'))
   console.log(c.gray('    type to chat') + ` ${sym.dot} ` + c.gray('/help for commands') + ` ${sym.dot} ` + c.gray('v0.1.0'))
   console.log()
 }
