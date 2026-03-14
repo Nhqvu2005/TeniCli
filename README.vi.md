@@ -1,14 +1,16 @@
-# TeniCLI
-
-> ⚡ CLI coding agent siêu nhẹ, không phụ thuộc, đa nhà cung cấp — nhanh, gọn, thông minh.
-
-[🇬🇧 English](./README.md)
+<div align="center">
 
 ```
   /\_/\
- ( ◉◉◉)  teni v0.1.0
-  ~~~~~
+  ( ◉◉◉ )
+   ~~~~~
 ```
+
+# TeniCLI
+
+> ⚡ Trợ lý AI lập trình siêu nhẹ cho terminal — nhanh, đa nền tảng, tự chủ.
+
+</div>
 
 ## Tính Năng
 
@@ -53,10 +55,15 @@ teni -m gpt-4o              # Chọn model khác
 |-------|-------|
 | `/model` | Chuyển đổi model AI (Anthropic / OpenAI) |
 | `/auth` | Cấu hình API key |
+| `/mode` | Bật/tắt chế độ ask/auto (hỏi trước khi ghi/chạy lệnh) |
+| `/compact` | Tóm tắt hội thoại bằng AI để tiết kiệm token |
+| `/diff` | Xem danh sách file đã thay đổi trong session |
+| `/undo` | Hoàn tác file vừa ghi |
+| `/init` | Tạo file `TENICLI.md` template cho project |
 | `/clear` | Bắt đầu cuộc trò chuyện mới |
 | `/cost` | Xem token đã dùng |
 | `/help` | Danh sách lệnh |
-| `\\` | Xuống dòng tiếp tục nhập |
+| `\\\\` | Xuống dòng tiếp tục nhập |
 
 ## Tool Tích Hợp
 

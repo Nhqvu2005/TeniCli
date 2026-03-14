@@ -52,6 +52,15 @@ export function mascot(): string {
   ].join('\n')
 }
 
+// ── Output helpers ───────────────────────────────────────────────
+export function header() {
+  console.log()
+  console.log(mascot())
+  console.log(c.gray('  ─────────────────────────────────────'))
+  console.log(c.gray('  type to chat') + ` ${sym.dot} ` + c.gray('/help for commands'))
+  console.log()
+}
+
 // ── Spinner ──────────────────────────────────────────────────────
 export class Spinner {
   private i = 0
@@ -121,13 +130,6 @@ export async function selectOption(title: string, options: { label: string; desc
 }
 
 // ── Output helpers ───────────────────────────────────────────────
-export function header() {
-  console.log()
-  console.log(mascot())
-  console.log(c.gray('  ─────────────────────────────────────'))
-  console.log(c.gray('  type to chat') + ` ${sym.dot} ` + c.gray('/help for commands'))
-  console.log()
-}
 
 export function toolLog(name: string, detail: string) {
   console.log(`\n  ${sym.tool} ${c.yellow(name)} ${c.gray(detail)}`)

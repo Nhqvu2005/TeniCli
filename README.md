@@ -1,14 +1,16 @@
-# TeniCLI
-
-> ⚡ Lightweight, zero-dependency AI coding agent for your terminal — fast, multi-provider, agentic.
-
-[🇻🇳 Tiếng Việt](./README.vi.md)
+<div align="center">
 
 ```
   /\_/\
- ( ◉◉◉)  teni v0.1.0
-  ~~~~~
+  ( ◉◉◉ )
+   ~~~~~
 ```
+
+# TeniCLI
+
+> ⚡ Lightweight AI coding agent for your terminal — fast, compact, multi-provider.
+
+</div>
 
 ## Features
 
