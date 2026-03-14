@@ -130,21 +130,29 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
     }
 
     case '/model': {
-      const options = MODELS.map(m => ({
+      const stored = loadStoredConfig()
+      const customModels = stored.customModels || []
+
+      // Build full model list: built-in + custom
+      const allModels = [
+        ...MODELS.map(m => ({ id: m.id, name: m.name, provider: m.provider, speed: m.speed, custom: false })),
+        ...customModels.map(cm => ({ id: cm.id, name: cm.id, provider: cm.provider, speed: 'custom' as const, custom: true })),
+      ]
+
+      const options = allModels.map(m => ({
         label: `${m.name} ${session.cfg.provider.model === m.id ? c.green('●') : ''}`,
         desc: `${m.provider} • ${m.speed}`,
       }))
       options.push({ label: 'Custom model...', desc: 'type model ID' })
 
       const idx = await selectOption('Select model', options)
+      if (idx === -1) { console.log(`  ${c.gray('Cancelled')}`); return true }
 
-      if (idx < MODELS.length) {
-        const m = MODELS[idx]
+      if (idx < allModels.length) {
+        const m = allModels[idx]
         session.cfg.provider.model = m.id
         session.cfg.provider.type = m.provider
 
-        // Update base URL if provider changed
-        const stored = loadStoredConfig()
         const key = m.provider === 'openai'
           ? (process.env.OPENAI_API_KEY || stored.keys?.openai || '')
           : (process.env.ANTHROPIC_API_KEY || stored.keys?.anthropic || '')
@@ -159,12 +167,32 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
         saveStoredConfig({ activeModel: m.id })
         console.log(`  ${sym.ok} Model: ${c.blue(m.name)}`)
       } else {
+        // Custom model
+        const provIdx = await selectOption('Provider for custom model', [
+          { label: 'Anthropic', desc: 'Claude-compatible' },
+          { label: 'OpenAI', desc: 'GPT-compatible' },
+        ])
+        if (provIdx === -1) { console.log(`  ${c.gray('Cancelled')}`); return true }
+
+        const provType: ProviderType = provIdx === 0 ? 'anthropic' : 'openai'
         const custom = await readLine(`  ${c.gray('model ID')} ${c.blue('❯')} `)
-        if (custom.trim()) {
-          session.cfg.provider.model = custom.trim()
-          saveStoredConfig({ activeModel: custom.trim() })
-          console.log(`  ${sym.ok} Model: ${c.blue(custom.trim())}`)
-        }
+        if (!custom.trim()) { console.log(`  ${c.gray('Cancelled')}`); return true }
+
+        const modelId = custom.trim()
+        session.cfg.provider.model = modelId
+        session.cfg.provider.type = provType
+
+        // Save custom model to list (no duplicates)
+        const existing = customModels.filter(cm => cm.id !== modelId)
+        existing.push({ id: modelId, provider: provType })
+        saveStoredConfig({ activeModel: modelId, customModels: existing })
+
+        const key = provType === 'openai'
+          ? (process.env.OPENAI_API_KEY || stored.keys?.openai || '')
+          : (process.env.ANTHROPIC_API_KEY || stored.keys?.anthropic || '')
+        if (key) session.cfg.provider.apiKey = key
+
+        console.log(`  ${sym.ok} Model: ${c.blue(modelId)} ${c.gray(`(saved to list)`)}`)
       }
       return true
     }
@@ -175,6 +203,7 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
         { label: 'OpenAI', desc: 'GPT models' },
         { label: 'Custom', desc: 'Anthropic-compatible proxy' },
       ])
+      if (providerIdx === -1) { console.log(`  ${c.gray('Cancelled')}`); return true }
 
       const providerNames: ProviderType[] = ['anthropic', 'openai', 'anthropic']
       const provider = providerNames[providerIdx]

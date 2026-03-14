@@ -51,6 +51,7 @@ interface StoredConfig {
   keys?: Record<string, string>    // { anthropic: 'sk-ant-...', openai: 'sk-...' }
   baseUrls?: Record<string, string>
   activeModel?: string
+  customModels?: { id: string; provider: ProviderType }[]
 }
 
 export function loadStoredConfig(): StoredConfig {

@@ -340,11 +340,15 @@ export async function selectOption(title: string, options: { label: string; desc
     const desc = o.desc ? c.gray(` (${o.desc})`) : ''
     console.log(`${num} ${o.label}${desc}`)
   })
+  // Always show Cancel as last option
+  console.log(`  ${c.gray(`  0. Cancel`)}`)
   while (true) {
     const ans = await readLine(`\n  ${c.gray('choose')} ${c.blue('❯')} `)
-    const n = parseInt(ans.trim())
+    const t = ans.trim().toLowerCase()
+    if (t === '0' || t === 'q' || t === 'cancel' || t === 'exit' || t === '') return -1
+    const n = parseInt(t)
     if (n >= 1 && n <= options.length) return n - 1
-    console.log(`  ${sym.warn} enter 1-${options.length}`)
+    console.log(`  ${sym.warn} enter 1-${options.length} or 0 to cancel`)
   }
 }
 
