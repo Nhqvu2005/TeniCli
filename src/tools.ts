@@ -1,7 +1,55 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from 'fs'
 import { resolve, relative, join, dirname } from 'path'
 import { c, toolLog, sym } from './ui'
-import type { ToolDef, ContentBlock } from './provider'
+import type { ContentBlock } from './provider'
+
+export interface ToolDef {
+  name: string
+  description: string
+  input_schema: Record<string, any>
+}
+
+// ── File change tracker (for /diff and /undo) ────────────────────
+export class FileTracker {
+  private writes: { path: string; backup: string | null; newLines: number; time: Date }[] = []
+
+  recordWrite(absPath: string, newContent: string) {
+    const backup = existsSync(absPath) ? readFileSync(absPath, 'utf8') : null
+    this.writes.push({
+      path: absPath,
+      backup,
+      newLines: newContent.split('\n').length,
+      time: new Date(),
+    })
+  }
+
+  getChanges(): { path: string; isNew: boolean; lines: number; time: Date }[] {
+    const seen = new Map<string, { isNew: boolean; lines: number; time: Date }>()
+    for (const w of this.writes) {
+      seen.set(w.path, { isNew: w.backup === null, lines: w.newLines, time: w.time })
+    }
+    return Array.from(seen.entries()).map(([path, info]) => ({ path, ...info }))
+  }
+
+  undo(): { path: string; restored: boolean } | null {
+    const last = this.writes.pop()
+    if (!last) return null
+    if (last.backup !== null) {
+      writeFileSync(last.path, last.backup, 'utf8')
+      return { path: last.path, restored: true }
+    } else {
+      // File was new — delete it
+      try { require('fs').unlinkSync(last.path) } catch {}
+      return { path: last.path, restored: false }
+    }
+  }
+
+  get count() { return this.writes.length }
+
+  clear() { this.writes = [] }
+}
+
+export const fileTracker = new FileTracker()
 
 // ── Tool Definitions (Anthropic format) ──────────────────────────
 export const TOOLS: ToolDef[] = [
@@ -137,6 +185,7 @@ function execWriteFile(input: Record<string, any>, cwd: string): string {
   const fp = resolvePath(input.path, cwd)
   const dir = dirname(fp)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  fileTracker.recordWrite(fp, input.content)
   writeFileSync(fp, input.content, 'utf8')
   return `Written ${input.content.split('\n').length} lines to ${input.path}`
 }

@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 import { loadConfig, loadStoredConfig, saveStoredConfig, MODELS, type ProviderType } from './config'
 import { ChatSession } from './chat'
+import { fileTracker } from './tools'
 import { header, readInput, readLine, selectOption, c, sym, errorLog } from './ui'
+import { writeFileSync, existsSync } from 'fs'
+import { join, relative } from 'path'
 
 const VERSION = '0.1.0'
 
@@ -45,8 +48,10 @@ ${c.bold('OPTIONS')}
 
 ${c.bold('IN-CHAT')}
   /model   Select model     /auth    Set API key
-  /clear   New conversation  /cost    Token usage
-  /exit    Quit              /help    Commands
+  /mode    Ask/Auto toggle  /compact Summarize chat
+  /diff    Files changed    /undo    Revert last write
+  /init    Create TENICLI.md  /clear New conversation
+  /cost    Token usage      /exit    Quit
   \\\\       Multiline input
 `)
 }
@@ -60,8 +65,62 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
 
     case '/clear':
       session.clear()
+      fileTracker.clear()
       console.log(`  ${sym.ok} Conversation cleared`)
       return true
+
+    case '/compact':
+      await session.compact()
+      return true
+
+    case '/diff': {
+      const changes = fileTracker.getChanges()
+      if (changes.length === 0) {
+        console.log(`  ${c.gray('No files changed in this session.')}`)
+      } else {
+        console.log(`\n  ${c.bold('Files changed this session:')}`)
+        for (const f of changes) {
+          const rel = relative(session.cfg.cwd, f.path)
+          const tag = f.isNew ? c.green('[NEW]') : c.yellow('[MOD]')
+          console.log(`    ${tag} ${c.cyan(rel)} ${c.gray(`(${f.lines} lines)`)}`)
+        }
+        console.log(`  ${c.gray(`total: ${changes.length} files`)}`)
+      }
+      return true
+    }
+
+    case '/undo': {
+      const result = fileTracker.undo()
+      if (!result) {
+        console.log(`  ${c.gray('Nothing to undo.')}`)
+      } else {
+        const rel = relative(session.cfg.cwd, result.path)
+        if (result.restored) {
+          console.log(`  ${sym.ok} Restored: ${c.cyan(rel)}`)
+        } else {
+          console.log(`  ${sym.ok} Deleted (was new): ${c.cyan(rel)}`)
+        }
+      }
+      return true
+    }
+
+    case '/init': {
+      const mdPath = join(session.cfg.cwd, 'TENICLI.md')
+      if (existsSync(mdPath)) {
+        console.log(`  ${sym.warn} TENICLI.md already exists.`)
+      } else {
+        writeFileSync(mdPath, TENICLI_TEMPLATE, 'utf8')
+        console.log(`  ${sym.ok} Created ${c.cyan('TENICLI.md')}`)
+      }
+      return true
+    }
+
+    case '/mode': {
+      session.autoMode = !session.autoMode
+      const label = session.autoMode ? c.yellow('auto') : c.green('ask')
+      console.log(`  ${sym.ok} Mode: ${label} ${c.gray(session.autoMode ? '(tools run without asking)' : '(confirm write/exec)')}`)
+      return true
+    }
 
     case '/cost': {
       const s = session.stats
@@ -145,12 +204,17 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
     case '/help':
       console.log(`
   ${c.bold('Commands')}
-    ${c.blue('/model')}   Select AI model
-    ${c.blue('/auth')}    Set API key
-    ${c.blue('/clear')}   New conversation
-    ${c.blue('/cost')}    Show token usage
-    ${c.blue('/exit')}    Quit
-    ${c.gray('\\\\')}        Continue on next line`)
+    ${c.blue('/model')}    Select AI model
+    ${c.blue('/auth')}     Set API key
+    ${c.blue('/mode')}     Toggle ask/auto ${c.gray('(confirm before write/exec)')}
+    ${c.blue('/compact')}  Summarize conversation ${c.gray('(save tokens)')}
+    ${c.blue('/diff')}     List files changed this session
+    ${c.blue('/undo')}     Revert last file write
+    ${c.blue('/init')}     Create TENICLI.md template
+    ${c.blue('/clear')}    New conversation
+    ${c.blue('/cost')}     Show token usage
+    ${c.blue('/exit')}     Quit
+    ${c.gray('\\\\')}         Continue on next line`)
       return true
 
     default:
@@ -178,7 +242,8 @@ async function main() {
   // Interactive — go straight to chat
   header()
   const modelName = MODELS.find(m => m.id === cfg.provider.model)?.name || cfg.provider.model
-  console.log(`  ${c.gray('model')} ${c.blue(modelName)}  ${c.gray('cwd')} ${c.cyan(cfg.cwd)}`)
+  const modeLabel = session.autoMode ? c.yellow('auto') : c.green('ask')
+  console.log(`  ${c.gray('model')} ${c.blue(modelName)}  ${c.gray('mode')} ${modeLabel}  ${c.gray('cwd')} ${c.cyan(cfg.cwd)}`)
 
   if (!cfg.provider.apiKey) {
     console.log(`\n  ${sym.warn} ${c.yellow('No API key configured. Run /auth to set one.')}`)
@@ -217,3 +282,27 @@ async function main() {
 }
 
 main().catch(e => { errorLog(e.message); process.exit(1) })
+
+// ── TENICLI.md template ──────────────────────────────────────────
+const TENICLI_TEMPLATE = `# Project Instructions
+
+## Overview
+Describe your project here so the AI understands the context.
+
+## Tech Stack
+- Language:
+- Framework:
+- Database:
+
+## Coding Rules
+- Follow existing code style
+- Write tests for new features
+- Use descriptive variable names
+
+## File Structure
+Describe important files and directories.
+
+## Notes
+Any special instructions or constraints.
+`
+
