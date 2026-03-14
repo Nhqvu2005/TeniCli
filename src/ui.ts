@@ -202,21 +202,20 @@ export function readLine(prompt: string, enableHints = false): Promise<string> {
       if (selIdx >= matches.length) selIdx = matches.length - 1
       if (selIdx < 0) selIdx = 0
 
-      // Save cursor position
-      process.stdout.write('\x1b[s')
+      const visiblePromptLen = prompt.replace(/\x1b\[[0-9;]*m/g, '').length
+
       for (let i = 0; i < matches.length; i++) {
-        process.stdout.write('\n\x1b[2K')  // next line, clear it
+        process.stdout.write('\n\x1b[2K\r')  // next line, clear it, go to start
         const m = matches[i]
         if (i === selIdx) {
-          // Highlighted item: blue background
           process.stdout.write(`    ${c.blue(c.bold(m.cmd))} ${c.gray(m.desc)}`)
         } else {
           process.stdout.write(`    ${c.gray(m.cmd)} ${c.gray(c.dim(m.desc))}`)
         }
       }
       menuLines = matches.length
-      // Restore cursor position back to input line
-      process.stdout.write('\x1b[u')
+      // Restore cursor position manually to avoid the scrolling bug of \x1b[s
+      process.stdout.write(`\x1b[${menuLines}A\r\x1b[${visiblePromptLen + line.length}C`)
     }
 
     let escBuf = ''

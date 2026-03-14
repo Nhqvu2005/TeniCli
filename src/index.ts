@@ -265,7 +265,7 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
       return true
 
     case '/remote': {
-      const { getLocalIPs } = await import('./qr')
+      const { getLocalIPs, renderQR } = await import('./qr')
       const { startServer, getActiveServers } = await import('./server')
       const servers = getActiveServers()
 
@@ -284,16 +284,66 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
         if (idx < servers.size) {
           // Show info about existing server
           const entry = Array.from(servers.entries())[idx]
-          const ips = getLocalIPs()
-          const ip = ips[0] || 'localhost'
-          console.log(`\n  ${c.gray('URL:')} ${c.cyan(`http://${ip}:${entry[0]}`)}`)
-          console.log(`  ${c.gray('Password:')} ${c.yellow(entry[1].password)}`)
+          const port = entry[0]
+          
+          const act = await selectOption(`Server on port ${port}`, [
+            { label: 'Show QR & Local URL', desc: 'display QR code for Wi-Fi access' },
+            { label: 'Publish to Internet', desc: 'use localtunnel (free public URL)' },
+            { label: 'Stop server', desc: 'close this port' }
+          ])
+
+          if (act === 0) {
+            const ips = getLocalIPs()
+            const ip = ips[0] || 'localhost'
+            const url = `http://${ip}:${port}`
+            console.log(`\n  ${c.gray('URL:')}      ${c.cyan(url)}`)
+            console.log(`  ${c.gray('Password:')} ${c.yellow(entry[1].password)}\n`)
+            console.log(renderQR(url))
+            console.log()
+          } else if (act === 1) {
+            // Tunnel via npx localtunnel
+            console.log(`\n  ${sym.tool} ${c.yellow('Starting localtunnel...')}`)
+            try {
+              const { spawn } = await import('child_process')
+              const cp = spawn(/^win/.test(process.platform) ? 'npx.cmd' : 'npx', ['--yes', 'localtunnel', '--port', String(port)])
+              cp.unref() // Run in background
+
+              // Wait up to 10s for the URL
+              await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => { reject(new Error('Localtunnel timed out')) }, 10000)
+                cp.stdout.on('data', (d: any) => {
+                  const str = d.toString()
+                  if (str.includes('your url is:')) {
+                    clearTimeout(timeout)
+                    const pubUrl = str.split('your url is:')[1].trim()
+                    console.log(`  ${sym.ok} ${c.green('Published to Internet!')}\n`)
+                    console.log(`  ${c.gray('Public URL:')} ${c.cyan(pubUrl)}`)
+                    console.log(`  ${c.gray('Password:')}   ${c.yellow(entry[1].password)}\n`)
+                    console.log(`  ${c.gray('Note: The tunnel runs in the background.')}`)
+                    resolve()
+                  }
+                })
+                cp.stderr.on('data', () => {})
+              })
+              // Save cp to stop it later
+              ;(entry[1] as any).tunnel = cp
+            } catch (e: any) {
+              console.log(`  ${sym.warn} ${c.pink(`Failed to publish: ${e.message}`)}`)
+            }
+          } else if (act === 2) {
+            entry[1].close()
+            if ((entry[1] as any).tunnel) { try { (entry[1] as any).tunnel.kill() } catch {} }
+            console.log(`  ${sym.ok} Stopped server on port ${port}`)
+          }
           return true
         } else if (idx === servers.size) {
           // Fall through to create new
         } else {
           // Stop all
-          for (const [port, s] of servers) { s.close() }
+          for (const [port, s] of servers) {
+            s.close()
+            if ((s as any).tunnel) { try { (s as any).tunnel.kill() } catch {} }
+          }
           console.log(`  ${sym.ok} All remote servers stopped`)
           return true
         }
@@ -316,9 +366,10 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
         `${c.gray('Password:')} ${c.yellow(password)}`,
         `${c.gray('Port:')}     ${c.blue(String(port))}`,
         '',
-        c.gray('Anyone on the same WiFi can access this URL.'),
-        c.gray('Use /remote again to manage servers.'),
+        c.gray('Use /remote again to manage or publish this server.')
       ], 58)
+      console.log()
+      console.log(renderQR(url))
       console.log()
       return true
     }
