@@ -6,7 +6,8 @@ import { header, readInput, readLine, selectOption, drawBox, c, sym, errorLog } 
 import { writeFileSync, existsSync } from 'fs'
 import { join, relative } from 'path'
 
-const VERSION = '0.1.0'
+import pkg from '../package.json'
+const VERSION = pkg.version
 
 // ── Args ─────────────────────────────────────────────────────────
 function parseArgs(args: string[]) {
