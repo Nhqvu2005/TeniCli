@@ -39,24 +39,35 @@ export const sym = {
 // ── Mascot ───────────────────────────────────────────────────────
 export function mascot(): string {
   const p = (s: string) => c.purple(s)
-  const title = c.bold(c.blue('TeniCLI'))
-  const ver = c.gray('v0.1.0')
+  const b = (s: string) => c.blue(s)
+  const g = (s: string) => c.gray(s)
+  
+  const ghost = [
+    `   ${p('▗▛▘   ▝▜▖')}`,
+    `  ${p('▐███████▌')}`,
+    `  ${p('▐███')}  ${p('██▌')}`,
+    `  ${p('▐███████▌')}`,
+    `  ${p('▝▘ ▘▘ ▝▝ ')}`
+  ]
 
-  return [
-    `      ${p('/\\_____/\\')}`,
-    `     ${p('│███████│')}`,
-    `     ${p('│██  █  │')}    ${title} ${ver}`,
-    `     ${p('│███████│')}`,
-    `     ${p('╰─╯╰─╯╰─╯')}`
-  ].join('\n')
+  const text = [
+    `${b('▐▛████▜▌ ▝▜███▛▘ ▗▛██▜▖ ▄███▄     ▗▛██▀▀▘▐▛      ▄███▄ ')}`,
+    `${b('  ▐██▌  ▐██▛▀██▌▐██▛▘    ▐█▌     ▐██▌    ▐█▌      ▐█▌ ')}`,
+    `${b('  ▐██▌  ▐██████▌▐██▌     ▐█▌     ▐██▌    ▐█▌      ▐█▌ ')}`,
+    `${b('  ▐██▌  ▐██▌    ▐██▌     ▐█▌     ▐██▌    ▐██▄▄▄▖  ▐█▌ ')}`,
+    `${b('  ▝▀▀▘   ▝▀███▀▘▝▀▀▘    ▄███▄     ▝▀██▄▄▘ ▀▀▀▀▀  ▄███▄ ')}`
+  ]
+
+  return ghost.map((gL, i) => `${gL}    ${text[i]}`).join('\n')
 }
 
 // ── Output helpers ───────────────────────────────────────────────
 export function header() {
   console.log()
   console.log(mascot())
-  console.log(c.gray('    ──────────────────────────────────'))
-  console.log(c.gray('    type to chat') + ` ${sym.dot} ` + c.gray('/help for commands'))
+  console.log()
+  console.log(c.gray('    ──────────────────────────────────────────────────────────────────'))
+  console.log(c.gray('    type to chat') + ` ${sym.dot} ` + c.gray('/help for commands') + ` ${sym.dot} ` + c.gray('v0.1.0'))
   console.log()
 }
 
