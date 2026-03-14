@@ -125,25 +125,129 @@ export class Spinner {
   }
 }
 
-// ── Vietnamese-safe UTF-8 input ──────────────────────────────────
-export function readLine(prompt: string): Promise<string> {
+// Slash commands for autocomplete
+const SLASH_COMMANDS = [
+  '/model', '/auth', '/mode', '/compact', '/diff', '/undo',
+  '/init', '/update', '/clear', '/cost', '/help', '/exit'
+]
+
+export function readLine(prompt: string, enableHints = false): Promise<string> {
   return new Promise((resolve, reject) => {
     process.stdout.write(prompt)
-    let buf = ''
+    
+    if (!enableHints || !process.stdin.isTTY) {
+      // Simple mode: no autocomplete
+      let buf = ''
+      const onData = (chunk: any) => {
+        const str = typeof chunk === 'string' ? chunk : chunk.toString('utf8')
+        if (str.charCodeAt(0) === 3) { process.stdout.write('\n'); process.exit(0) }
+        if (str.charCodeAt(0) === 4) { cleanup(); reject(new Error('EOF')); return }
+        buf += str
+        const nl = buf.indexOf('\n')
+        if (nl !== -1) { cleanup(); resolve(buf.slice(0, nl).replace(/\r$/, '')) }
+      }
+      const cleanup = () => { process.stdin.removeListener('data', onData) }
+      if (!process.stdin.readableEncoding) process.stdin.setEncoding('utf8')
+      process.stdin.on('data', onData)
+      process.stdin.resume()
+      return
+    }
+
+    // Raw mode: character-by-character with autocomplete
+    let line = ''
+    let hintLen = 0
+    const wasRaw = process.stdin.isRaw
+    process.stdin.setRawMode(true)
+    if (!process.stdin.readableEncoding) process.stdin.setEncoding('utf8')
+    process.stdin.resume()
+
+    const clearHint = () => {
+      if (hintLen > 0) {
+        process.stdout.write(`\x1b[${hintLen}D\x1b[0K`)
+        hintLen = 0
+      }
+    }
+
+    const showHint = () => {
+      clearHint()
+      if (line.startsWith('/') && line.length > 1) {
+        const matches = SLASH_COMMANDS.filter(cmd => cmd.startsWith(line))
+        if (matches.length > 0) {
+          const rest = matches[0].slice(line.length)
+          if (rest) {
+            const hint = c.gray(rest)
+            process.stdout.write(hint)
+            hintLen = rest.length
+            // Move cursor back
+            process.stdout.write(`\x1b[${rest.length}D`)
+          }
+        }
+      }
+    }
+
     const onData = (chunk: any) => {
       const str = typeof chunk === 'string' ? chunk : chunk.toString('utf8')
-      // Ctrl+C
-      if (str.charCodeAt(0) === 3) { process.stdout.write('\n'); process.exit(0) }
-      // Ctrl+D (EOF)
-      if (str.charCodeAt(0) === 4) { cleanup(); reject(new Error('EOF')); return }
-      buf += str
-      const nl = buf.indexOf('\n')
-      if (nl !== -1) { cleanup(); resolve(buf.slice(0, nl).replace(/\r$/, '')) }
+      for (const ch of str) {
+        const code = ch.charCodeAt(0)
+        
+        // Ctrl+C
+        if (code === 3) {
+          process.stdin.setRawMode(wasRaw)
+          process.stdout.write('\n')
+          process.exit(0)
+        }
+        // Ctrl+D
+        if (code === 4) {
+          clearHint()
+          process.stdin.setRawMode(wasRaw)
+          cleanup()
+          reject(new Error('EOF'))
+          return
+        }
+        // Enter
+        if (code === 13 || code === 10) {
+          clearHint()
+          process.stdin.setRawMode(wasRaw)
+          process.stdout.write('\n')
+          cleanup()
+          resolve(line)
+          return
+        }
+        // Backspace
+        if (code === 127 || code === 8) {
+          if (line.length > 0) {
+            clearHint()
+            line = line.slice(0, -1)
+            process.stdout.write('\b \b')
+            showHint()
+          }
+          continue
+        }
+        // Tab — autocomplete
+        if (code === 9) {
+          if (line.startsWith('/')) {
+            const matches = SLASH_COMMANDS.filter(cmd => cmd.startsWith(line))
+            if (matches.length > 0) {
+              clearHint()
+              const rest = matches[0].slice(line.length)
+              line = matches[0]
+              process.stdout.write(rest)
+            }
+          }
+          continue
+        }
+        // Ignore other control chars
+        if (code < 32) continue
+        
+        // Regular character
+        clearHint()
+        line += ch
+        process.stdout.write(ch)
+        showHint()
+      }
     }
     const cleanup = () => { process.stdin.removeListener('data', onData) }
-    if (!process.stdin.readableEncoding) process.stdin.setEncoding('utf8')
     process.stdin.on('data', onData)
-    process.stdin.resume()
   })
 }
 
@@ -154,7 +258,7 @@ export async function readInput(): Promise<string> {
     const p = first
       ? `\n  ${c.gray(box.tl + box.line(3))} ${sym.prompt} `
       : `  ${c.gray(box.v)}    `
-    const line = await readLine(p)
+    const line = await readLine(p, first)
     first = false
     if (line.endsWith('\\')) { lines.push(line.slice(0, -1)) }
     else { lines.push(line); break }
