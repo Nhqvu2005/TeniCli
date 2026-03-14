@@ -38,26 +38,25 @@ export const sym = {
 
 // ── Mascot ───────────────────────────────────────────────────────
 export function mascot(): string {
-  const p = (s: string) => c.purple(s)
-  const b = (s: string) => c.blue(s)
-  
+  // Pad strings to exact character widths before applying any ANSI color codes
+  // to prevent terminal formatters from miscalculating the display width.
   const ghost = [
-    `   ${p('▄██████▄')}  `,
-    `  ${p('██████████')} `,
-    `  ${p('████  ███')}  `,
-    `  ${p('██████████')} `,
-    `  ${p('██████████')} `,
-    `  ${p('██▀█▀▀█▀██')} `
-  ]
+    "   ▄██████▄   ",
+    "  ██████████  ",
+    "  ██  ██  ██  ", // Eyes (White background implied by space)
+    "  ██ ▄██ ▄██  ", // Pupils (looking right)
+    "  ██████████  ",
+    "  ▀█▀▀██▀▀█▀  "
+  ].map(s => c.cyan(s.padEnd(14, ' ')))
 
   const text = [
-    ` `,
-    ` `,
-    `    ${b('▀█▀ ▄█▄ █▄ █ ▄█   ▄█▄ █   ▄█▄ ')}`,
-    `     ${b('█  █▄   █▀█ █    █   █    █')} `,
-    `     ${b('█  █▄▄ ▄█ █ █▄   █▄▄ █▄▄ ▄█▄')}`,
-    ` `
-  ]
+    "",
+    "",
+    "   ▀█▀ ▄█▄ █▄ █ ▄█   ▄█▄ █   ▄█▄",
+    "    █  █▄   █▀█ █    █   █    █ ",
+    "    █  █▄▄ ▄█ █ █▄   █▄▄ █▄▄ ▄█▄",
+    ""
+  ].map(s => c.blue(s.padEnd(32, ' ')))
 
   return ghost.map((gL, i) => `${gL}  ${text[i]}`).join('\n')
 }
@@ -67,7 +66,7 @@ export function header() {
   console.log()
   console.log(mascot())
   console.log()
-  console.log(c.gray('    ──────────────────────────────────────────────────────'))
+  console.log(c.gray('    ────────────────────────────────────────────────'))
   console.log(c.gray('    type to chat') + ` ${sym.dot} ` + c.gray('/help for commands') + ` ${sym.dot} ` + c.gray('v0.1.0'))
   console.log()
 }
