@@ -211,11 +211,25 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
     ${c.blue('/diff')}     List files changed this session
     ${c.blue('/undo')}     Revert last file write
     ${c.blue('/init')}     Create TENICLI.md template
+    ${c.blue('/update')}   Update to latest version
     ${c.blue('/clear')}    New conversation
     ${c.blue('/cost')}     Show token usage
     ${c.blue('/exit')}     Quit
     ${c.gray('\\\\')}         Continue on next line`)
       return true
+
+    case '/update': {
+      console.log(`\n  ${sym.tool} ${c.yellow('Checking for updates...')}`)
+      try {
+        const { execSync } = await import('child_process')
+        const result = execSync('npm i -g tenicli@latest 2>&1', { encoding: 'utf8' })
+        console.log(`  ${sym.ok} ${c.green('Updated!')} Restart teni to use the new version.`)
+        console.log(c.gray(`  ${result.trim().split('\n').pop()}`))
+      } catch (e: any) {
+        errorLog(`Update failed: ${e.message}`)
+      }
+      return true
+    }
 
     default:
       console.log(`  ${sym.warn} Unknown: ${cmd.split(' ')[0]} — try /help`)
