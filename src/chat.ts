@@ -20,6 +20,7 @@ export class ChatSession {
   private async agentLoop(): Promise<void> {
     while (true) {
       const result = await this.streamResponse()
+      if (result.stopReason === 'error') break
 
       if (result.stopReason === 'tool_use') {
         const toolBlocks = result.content.filter(b => b.type === 'tool_use')
@@ -113,7 +114,9 @@ export class ChatSession {
         }
       }
     } catch (err: any) {
-      spinner.stop(); errorLog(err.message)
+      spinner.stop()
+      console.log()  // ensure error isn't overwritten by spinner clear
+      errorLog(err.message)
       return { content: [], stopReason: 'error' }
     }
 
