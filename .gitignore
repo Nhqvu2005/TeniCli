@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+teni
+teni.exe
+tenicli.exe
+*.log
+bun.lockb

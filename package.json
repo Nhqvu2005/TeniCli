@@ -1,0 +1,18 @@
+{
+  "name": "tenicli",
+  "version": "0.1.0",
+  "description": "Lightweight AI coding CLI — fast, compact, multi-provider",
+  "type": "module",
+  "bin": { "teni": "./src/index.ts" },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build --compile --minify src/index.ts --outfile teni",
+    "build:win": "bun build --compile --minify --target=bun-windows-x64 src/index.ts --outfile teni.exe",
+    "build:linux": "bun build --compile --minify --target=bun-linux-x64 src/index.ts --outfile teni",
+    "build:mac": "bun build --compile --minify --target=bun-darwin-x64 src/index.ts --outfile teni"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
