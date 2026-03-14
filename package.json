@@ -1,12 +1,16 @@
 {
   "name": "tenicli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lightweight AI coding CLI — fast, compact, multi-provider",
   "type": "module",
   "bin": {
     "teni": "./dist/index.js"
   },
-  "files": ["dist/", "README.md", "LICENSE"],
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "bun run src/index.ts",
     "build:npm": "bun build src/index.ts --outfile dist/index.js --target node --minify",
@@ -16,7 +20,15 @@
     "build:mac": "bun build --compile --minify --target=bun-darwin-x64 src/index.ts --outfile teni",
     "prepublishOnly": "bun run build:npm"
   },
-  "keywords": ["ai", "cli", "coding", "agent", "anthropic", "openai", "terminal"],
+  "keywords": [
+    "ai",
+    "cli",
+    "coding",
+    "agent",
+    "anthropic",
+    "openai",
+    "terminal"
+  ],
   "author": "Yan Tenica",
   "license": "MIT",
   "repository": {

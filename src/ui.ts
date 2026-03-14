@@ -73,13 +73,36 @@ export function mascot(): string {
   return ghostFormatted.map((gL, i) => `${gL} ${textFormatted[i] || ''}`).join('\n')
 }
 
+// ── Box drawing helpers ──────────────────────────────────────────
+const box = {
+  h: '─', v: '│',
+  tl: '╭', tr: '╮', bl: '╰', br: '╯',
+  line: (w: number) => '─'.repeat(w),
+}
+
+export function drawBox(lines: string[], width = 60) {
+  const pad = (s: string, w: number) => {
+    // strip ANSI to measure visible length
+    const vis = s.replace(/\x1b\[[0-9;]*m/g, '')
+    const diff = w - vis.length
+    return diff > 0 ? s + ' '.repeat(diff) : s
+  }
+  console.log(c.gray(`  ${box.tl}${box.line(width)}${box.tr}`))
+  for (const line of lines) {
+    console.log(c.gray(`  ${box.v}`) + ` ${pad(line, width - 2)} ` + c.gray(box.v))
+  }
+  console.log(c.gray(`  ${box.bl}${box.line(width)}${box.br}`))
+}
+
 // ── Output helpers ───────────────────────────────────────────────
 export function header() {
+  console.clear()
   console.log()
   console.log(mascot())
   console.log()
-  console.log(c.gray('    ────────────────────────────────────────────────────────────────────────'))
-  console.log(c.gray('    type to chat') + ` ${sym.dot} ` + c.gray('/help for commands') + ` ${sym.dot} ` + c.gray('v0.1.0'))
+  drawBox([
+    c.gray('type to chat') + ` ${sym.dot} ` + c.gray('/help for commands') + ` ${sym.dot} ` + c.gray('v0.1.0'),
+  ], 60)
   console.log()
 }
 
@@ -126,7 +149,9 @@ export async function readInput(): Promise<string> {
   const lines: string[] = []
   let first = true
   while (true) {
-    const p = first ? `\n ${sym.prompt} ` : `   ${c.gray('│')} `
+    const p = first
+      ? `\n  ${c.gray(box.tl + box.line(3))} ${sym.prompt} `
+      : `  ${c.gray(box.v)}    `
     const line = await readLine(p)
     first = false
     if (line.endsWith('\\')) { lines.push(line.slice(0, -1)) }

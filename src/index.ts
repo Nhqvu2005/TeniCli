@@ -2,7 +2,7 @@
 import { loadConfig, loadStoredConfig, saveStoredConfig, MODELS, type ProviderType } from './config'
 import { ChatSession } from './chat'
 import { fileTracker } from './tools'
-import { header, readInput, readLine, selectOption, c, sym, errorLog } from './ui'
+import { header, readInput, readLine, selectOption, drawBox, c, sym, errorLog } from './ui'
 import { writeFileSync, existsSync } from 'fs'
 import { join, relative } from 'path'
 
@@ -243,11 +243,15 @@ async function main() {
   header()
   const modelName = MODELS.find(m => m.id === cfg.provider.model)?.name || cfg.provider.model
   const modeLabel = session.autoMode ? c.yellow('auto') : c.green('ask')
-  console.log(`  ${c.gray('model')} ${c.blue(modelName)}  ${c.gray('mode')} ${modeLabel}  ${c.gray('cwd')} ${c.cyan(cfg.cwd)}`)
-
+  
+  const statusLines = [
+    `${c.gray('model')} ${c.blue(modelName)}  ${c.gray('mode')} ${modeLabel}  ${c.gray('cwd')} ${c.cyan(cfg.cwd)}`,
+  ]
   if (!cfg.provider.apiKey) {
-    console.log(`\n  ${sym.warn} ${c.yellow('No API key configured. Run /auth to set one.')}`)
+    statusLines.push('')
+    statusLines.push(`${sym.warn} ${c.yellow('No API key configured. Run /auth to set one.')}`)
   }
+  drawBox(statusLines, 60)
   console.log()
 
   // Send initial prompt if provided
