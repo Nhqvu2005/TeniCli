@@ -6,6 +6,7 @@ import { header, readInput, readLine, selectOption, drawBox, c, sym, errorLog } 
 import { writeFileSync, existsSync } from 'fs'
 import { join, relative } from 'path'
 import { randomBytes } from 'crypto'
+import { saveConversation, loadConversation, listConversations, createConversation, saveSessionState, loadSessionState, type ConversationRecord } from './history'
 
 import pkg from '../package.json'
 const VERSION = pkg.version
@@ -253,6 +254,7 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
     ${c.blue('/undo')}     Revert last file write
     ${c.blue('/init')}     Create TENICLI.md template
     ${c.blue('/remote')}   Start web remote access
+    ${c.blue('/history')}  Browse past conversations
     ${c.blue('/update')}   Update to latest version
     ${c.blue('/clear')}    New conversation
     ${c.blue('/cost')}     Show token usage
@@ -291,13 +293,51 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
       return true
     }
 
+    case '/history': {
+      const convs = listConversations()
+      if (convs.length === 0) {
+        console.log(`  ${c.gray('No saved conversations.')}`)
+        return true
+      }
+      const options = convs.slice(0, 10).map(cv => ({
+        label: cv.title.slice(0, 40),
+        desc: `${cv.model} • ${new Date(cv.updatedAt).toLocaleDateString()}`,
+      }))
+      const idx = await selectOption('Resume conversation', options)
+      if (idx === -1) { console.log(`  ${c.gray('Cancelled')}`); return true }
+
+      const conv = convs[idx]
+      session.clear()
+      session.importState({ messages: conv.messages, tokens: conv.tokens })
+      // Store conversation ID on session for auto-save
+      ;(session as any).__convId = conv.id
+      console.log(`  ${sym.ok} Restored: ${c.blue(conv.title)} ${c.gray(`(${conv.messages.length} msgs)`)}`)
+      return true
+    }
+
     case '/update': {
-      console.log(`\n  ${sym.tool} ${c.yellow('Checking for updates...')}`)
+      console.log(`\n  ${sym.tool} ${c.yellow('Updating tenicli...')}`)
       try {
-        const { execSync } = await import('child_process')
-        const result = execSync('npm i -g tenicli@latest 2>&1', { encoding: 'utf8' })
-        console.log(`  ${sym.ok} ${c.green('Updated!')} Restart teni to use the new version.`)
-        console.log(c.gray(`  ${result.trim().split('\n').pop()}`))
+        // Save current session for restore after restart
+        const state = session.exportState()
+        const conv = createConversation(session.cfg.provider.model)
+        conv.title = session.getTitle()
+        conv.messages = state.messages
+        conv.tokens = state.tokens
+        saveSessionState(conv)
+
+        const { execSync, spawn } = await import('child_process')
+        execSync('npm i -g tenicli@latest 2>&1', { encoding: 'utf8' })
+        console.log(`  ${sym.ok} ${c.green('Updated! Restarting...')}\n`)
+
+        // Restart the process
+        const child = spawn(process.execPath, process.argv.slice(1), {
+          stdio: 'inherit',
+          detached: false,
+        })
+        child.on('exit', (code) => process.exit(code || 0))
+        // Prevent the parent from keeping the event loop alive
+        return true
       } catch (e: any) {
         errorLog(`Update failed: ${e.message}`)
       }
@@ -350,10 +390,37 @@ async function main() {
   drawBox(statusLines, 60)
   console.log()
 
+  // Check for session restore (after /update auto-reload)
+  const resumed = loadSessionState()
+  let currentConv = createConversation(cfg.provider.model)
+
+  if (resumed) {
+    session.importState({ messages: resumed.messages, tokens: resumed.tokens })
+    currentConv = resumed
+    console.log(`  ${sym.ok} ${c.green('Session restored after update')} ${c.gray(`(${resumed.messages.length} msgs)`)}`)
+    console.log()
+  }
+
+  // Auto-save helper
+  const autoSave = () => {
+    if (session.messageCount === 0) return
+    const state = session.exportState()
+    currentConv.title = session.getTitle()
+    currentConv.messages = state.messages
+    currentConv.tokens = state.tokens
+    currentConv.model = cfg.provider.model
+    currentConv.updatedAt = new Date().toISOString()
+    saveConversation(currentConv)
+  }
+
+  // Save on exit
+  process.on('SIGINT', () => { autoSave(); console.log(`\n  ${c.gray('Bye!')} 👋\n`); process.exit(0) })
+
   // Send initial prompt if provided
   if (args.prompt) {
     console.log(` ${sym.prompt} ${args.prompt}`)
     if (cfg.provider.apiKey) await session.send(args.prompt)
+    autoSave()
   }
 
   // Chat loop
@@ -364,6 +431,10 @@ async function main() {
       if (!trimmed) continue
 
       if (trimmed.startsWith('/')) {
+        if (trimmed === '/clear') {
+          autoSave()  // save before clearing
+          currentConv = createConversation(cfg.provider.model)  // new conv
+        }
         await handleCommand(trimmed, session)
         continue
       }
@@ -374,8 +445,9 @@ async function main() {
       }
 
       await session.send(trimmed)
+      autoSave()  // save after each response
     } catch (e: any) {
-      if (e.message === 'EOF') { console.log(`\n  ${c.gray('Bye!')} 👋\n`); process.exit(0) }
+      if (e.message === 'EOF') { autoSave(); console.log(`\n  ${c.gray('Bye!')} 👋\n`); process.exit(0) }
       errorLog(e.message)
     }
   }

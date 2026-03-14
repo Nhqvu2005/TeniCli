@@ -135,6 +135,7 @@ const SLASH_COMMANDS = [
   { cmd: '/undo',    desc: 'revert last change' },
   { cmd: '/init',    desc: 'init project context' },
   { cmd: '/remote',  desc: 'start web remote' },
+  { cmd: '/history', desc: 'past conversations' },
   { cmd: '/update',  desc: 'update tenicli' },
   { cmd: '/clear',   desc: 'clear screen' },
   { cmd: '/cost',    desc: 'show token usage' },

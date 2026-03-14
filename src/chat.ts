@@ -244,4 +244,27 @@ export class ChatSession {
     this.messages = []
     this.tokens = { input: 0, output: 0 }
   }
+
+  // Export state for persistence
+  exportState(): { messages: any[]; tokens: { input: number; output: number }; autoMode: boolean } {
+    return {
+      messages: this.messages,
+      tokens: { ...this.tokens },
+      autoMode: this.autoMode,
+    }
+  }
+
+  // Import state from persistence
+  importState(state: { messages?: any[]; tokens?: { input: number; output: number }; autoMode?: boolean }) {
+    if (state.messages) this.messages = state.messages
+    if (state.tokens) this.tokens = state.tokens
+    if (state.autoMode !== undefined) this.autoMode = state.autoMode
+  }
+
+  // Get first user message for title
+  getTitle(): string {
+    const first = this.messages.find(m => m.role === 'user' && typeof m.content === 'string')
+    if (first) return (first.content as string).slice(0, 50)
+    return 'New conversation'
+  }
 }
