@@ -5,6 +5,7 @@ import { fileTracker } from './tools'
 import { header, readInput, readLine, selectOption, drawBox, c, sym, errorLog } from './ui'
 import { writeFileSync, existsSync } from 'fs'
 import { join, relative } from 'path'
+import { randomBytes } from 'crypto'
 
 import pkg from '../package.json'
 const VERSION = pkg.version
@@ -15,6 +16,11 @@ function parseArgs(args: string[]) {
   let i = 0
   while (i < args.length) {
     switch (args[i]) {
+      case 'serve':
+        o.serve = true
+        break
+      case '--port': o.port = parseInt(args[++i]); break
+      case '--password': o.password = args[++i]; break
       case '-p': case '--print':
         o.print = true
         if (i + 1 < args.length && !args[i + 1].startsWith('-')) o.prompt = args[++i]
@@ -39,6 +45,7 @@ ${c.bold('USAGE')}
   teni                     Start chatting
   teni "prompt"            Start with a prompt
   teni -p "prompt"         Non-interactive mode
+  teni serve               Start web remote server
 
 ${c.bold('OPTIONS')}
   -p, --print <prompt>  Print response and exit
@@ -47,13 +54,17 @@ ${c.bold('OPTIONS')}
   -v, --version         Show version
   -h, --help            Show help
 
+${c.bold('SERVE OPTIONS')}
+  --port <port>         Server port (default: 3000)
+  --password <pw>       Access password (auto-generated if omitted)
+
 ${c.bold('IN-CHAT')}
   /model   Select model     /auth    Set API key
   /mode    Ask/Auto toggle  /compact Summarize chat
   /diff    Files changed    /undo    Revert last write
   /init    Create TENICLI.md  /clear New conversation
-  /cost    Token usage      /exit    Quit
-  \\\\       Multiline input
+  /update  Update tenicli   /cost    Token usage
+  /exit    Quit             \\\\       Multiline input
 `)
 }
 
@@ -241,12 +252,44 @@ async function handleCommand(cmd: string, session: ChatSession): Promise<boolean
     ${c.blue('/diff')}     List files changed this session
     ${c.blue('/undo')}     Revert last file write
     ${c.blue('/init')}     Create TENICLI.md template
+    ${c.blue('/remote')}   Start web remote access
     ${c.blue('/update')}   Update to latest version
     ${c.blue('/clear')}    New conversation
     ${c.blue('/cost')}     Show token usage
     ${c.blue('/exit')}     Quit
     ${c.gray('\\\\')}         Continue on next line`)
       return true
+
+    case '/remote': {
+      const { getLocalIPs, renderQR } = await import('./qr')
+      const port = 3000
+      const password = randomBytes(6).toString('hex')
+      const ips = getLocalIPs()
+      const localIP = ips[0] || 'localhost'
+      const url = `http://${localIP}:${port}`
+
+      // Start server in background
+      const { startServer } = await import('./server')
+      startServer(port, password)
+
+      console.log()
+      drawBox([
+        c.bold(c.green('Remote Access Enabled')),
+        '',
+        `${c.gray('URL:')}      ${c.cyan(url)}`,
+        `${c.gray('Password:')} ${c.yellow(password)}`,
+        '',
+        c.gray('Anyone on the same WiFi can access this URL.'),
+        c.gray('For public access, use VS Code Port Forward or ngrok.'),
+      ], 58)
+      console.log()
+      console.log(renderQR(url))
+      console.log()
+      console.log(`  ${c.gray('Press Ctrl+C to stop the server')}`)
+      console.log()
+
+      return true
+    }
 
     case '/update': {
       console.log(`\n  ${sym.tool} ${c.yellow('Checking for updates...')}`)
@@ -273,6 +316,15 @@ async function main() {
   const cfg = loadConfig()
   if (args.model) cfg.provider.model = args.model
   if (args.baseUrl) cfg.provider.baseUrl = args.baseUrl
+
+  // Serve mode — start web server
+  if (args.serve) {
+    const port = args.port || 3000
+    const password = args.password || randomBytes(6).toString('hex')
+    const { startServer } = await import('./server')
+    startServer(port, password)
+    return
+  }
 
   const session = new ChatSession(cfg)
 
