@@ -163,7 +163,9 @@ export function readLine(prompt: string, enableHints = false): Promise<string> {
 
     const clearHint = () => {
       if (hintLen > 0) {
-        process.stdout.write(`\x1b[${hintLen}D\x1b[0K`)
+        // Cursor is already at user's input position (showHint moved it back)
+        // Just clear everything to the right
+        process.stdout.write('\x1b[0K')
         hintLen = 0
       }
     }
