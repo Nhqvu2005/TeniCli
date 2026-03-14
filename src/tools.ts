@@ -223,20 +223,29 @@ function execListDir(input: Record<string, any>, cwd: string): string {
   return entries.length > 0 ? entries.join('\n') : '(empty directory)'
 }
 
+import { spawn } from 'child_process'
+
 async function execSearchFiles(input: Record<string, any>, cwd: string): Promise<string> {
   const dir = resolvePath(input.path || '.', cwd)
   const pattern = input.pattern
 
   // Try ripgrep first (faster), fallback to manual
   try {
-    const args = ['rg', '-n', '--max-count=50', '--no-heading']
+    const args = ['-n', '--max-count=50', '--no-heading']
     if (input.include) args.push('--glob', input.include)
     args.push(pattern, dir)
 
-    const proc = Bun.spawn(args, { stdout: 'pipe', stderr: 'pipe' })
-    const out = await new Response(proc.stdout).text()
-    const code = await proc.exited
-    if (code === 0 || code === 1) return out.trim() || 'No matches found.'
+    const result = await new Promise<string>((resolve, reject) => {
+      const proc = spawn('rg', args, { shell: true })
+      let out = ''
+      proc.stdout.on('data', d => out += d.toString())
+      proc.on('close', code => {
+        if (code === 0 || code === 1) resolve(out.trim() || 'No matches found.')
+        else reject(new Error('rg failed'))
+      })
+      proc.on('error', reject)
+    })
+    return result
   } catch {}
 
   // Fallback: simple file search
@@ -274,27 +283,34 @@ async function execCommand(input: Record<string, any>, cwd: string): Promise<str
   const shell = isWindows ? 'cmd' : 'sh'
   const shellFlag = isWindows ? '/c' : '-c'
 
-  const proc = Bun.spawn([shell, shellFlag, input.command], {
-    cwd: dir,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, PAGER: 'cat' },
+  return new Promise((resolve) => {
+    const proc = spawn(shell, [shellFlag, input.command], {
+      cwd: dir,
+      env: { ...process.env, PAGER: 'cat' },
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    proc.stdout.on('data', d => stdout += d.toString())
+    proc.stderr.on('data', d => stderr += d.toString())
+
+    const timeout = setTimeout(() => proc.kill(), 30000)
+
+    proc.on('close', code => {
+      clearTimeout(timeout)
+      let output = ''
+      if (stdout.trim()) output += stdout.trim()
+      if (stderr.trim()) output += (output ? '\n' : '') + `[stderr] ${stderr.trim()}`
+      output += `\n[exit code: ${code}]`
+      resolve(output)
+    })
+    
+    proc.on('error', err => {
+      clearTimeout(timeout)
+      resolve(`[error] Failed to start process: ${err.message}`)
+    })
   })
-
-  // Timeout: 30 seconds
-  const timeout = setTimeout(() => proc.kill(), 30000)
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
-  clearTimeout(timeout)
-  const code = await proc.exited
-
-  let output = ''
-  if (stdout.trim()) output += stdout.trim()
-  if (stderr.trim()) output += (output ? '\n' : '') + `[stderr] ${stderr.trim()}`
-  output += `\n[exit code: ${code}]`
-  return output
 }
 
 // ── Helpers ──────────────────────────────────────────────────────

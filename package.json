@@ -3,13 +3,27 @@
   "version": "0.1.0",
   "description": "Lightweight AI coding CLI — fast, compact, multi-provider",
   "type": "module",
-  "bin": { "teni": "./src/index.ts" },
+  "bin": { "teni": "./dist/index.js" },
+  "files": ["dist/", "README.md", "LICENSE"],
   "scripts": {
     "dev": "bun run src/index.ts",
+    "build:npm": "bun build src/index.ts --outfile dist/index.js --target node --minify",
     "build": "bun build --compile --minify src/index.ts --outfile teni",
     "build:win": "bun build --compile --minify --target=bun-windows-x64 src/index.ts --outfile teni.exe",
     "build:linux": "bun build --compile --minify --target=bun-linux-x64 src/index.ts --outfile teni",
-    "build:mac": "bun build --compile --minify --target=bun-darwin-x64 src/index.ts --outfile teni"
+    "build:mac": "bun build --compile --minify --target=bun-darwin-x64 src/index.ts --outfile teni",
+    "prepublishOnly": "bun run build:npm"
+  },
+  "keywords": ["ai", "cli", "coding", "agent", "anthropic", "openai", "terminal"],
+  "author": "Yan Tenica",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nhqvu2005/TeniCli.git"
+  },
+  "homepage": "https://github.com/Nhqvu2005/TeniCli",
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {},
   "devDependencies": {
