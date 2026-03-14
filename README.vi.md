@@ -1,14 +1,15 @@
 <div align="center">
-
-```
-  /\_/\
-  ( ◉◉◉ )
-   ~~~~~
-```
+<pre>
+   /\__/\
+  ╭╯    ╰╮
+  │  ▀  ▀│
+  │      │
+  ╰─╯╰─╯╰─╯
+</pre>
 
 # TeniCLI
 
-> ⚡ Trợ lý AI lập trình siêu nhẹ cho terminal — nhanh, đa nền tảng, tự chủ.
+**⚡ Trợ lý AI lập trình siêu nhẹ cho terminal — nhanh, đa nền tảng, tự chủ.**
 
 </div>
 

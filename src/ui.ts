@@ -38,17 +38,18 @@ export const sym = {
 
 // ── Mascot ───────────────────────────────────────────────────────
 export function mascot(): string {
-  const ear   = c.gray
-  const eye   = c.blue
-  const body  = c.gray
-  const wave  = c.cyan
+  const p = (s: string) => c.purple(s)
+  const b = (s: string) => c.blue(s)
+  const g = (s: string) => c.gray(s)
   const title = c.bold(c.blue('TeniCLI'))
-  const ver   = c.gray('v0.1.0')
+  const ver = c.gray('v0.1.0')
 
   return [
-    `  ${ear('/\\_/\\')}`,
-    `  ${body('(')} ${eye('◉◉◉')} ${body(')')}  ${title} ${ver}`,
-    `   ${wave('~~~~~')}`,
+    `     ${p('/\\__/\\')}`,
+    `    ${b('╭╯')}    ${b('╰╮')}`,
+    `    ${b('│')}  ${g('▀  ▀')}${b('│')}   ${title} ${ver}`,
+    `    ${b('│')}      ${b('│')}`,
+    `    ${b('╰─╯╰─╯╰─╯')}`
   ].join('\n')
 }
 
@@ -56,8 +57,8 @@ export function mascot(): string {
 export function header() {
   console.log()
   console.log(mascot())
-  console.log(c.gray('  ─────────────────────────────────────'))
-  console.log(c.gray('  type to chat') + ` ${sym.dot} ` + c.gray('/help for commands'))
+  console.log(c.gray('    ──────────────────────────────────'))
+  console.log(c.gray('    type to chat') + ` ${sym.dot} ` + c.gray('/help for commands'))
   console.log()
 }
 

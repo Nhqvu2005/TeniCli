@@ -1,14 +1,15 @@
 <div align="center">
-
-```
-  /\_/\
-  ( ◉◉◉ )
-   ~~~~~
-```
+<pre>
+   /\__/\
+  ╭╯    ╰╮
+  │  ▀  ▀│
+  │      │
+  ╰─╯╰─╯╰─╯
+</pre>
 
 # TeniCLI
 
-> ⚡ Lightweight AI coding agent for your terminal — fast, compact, multi-provider.
+**⚡ Lightweight AI coding agent for your terminal — fast, compact, multi-provider.**
 
 </div>
 
