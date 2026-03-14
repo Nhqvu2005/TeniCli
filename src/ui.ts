@@ -40,28 +40,37 @@ export const sym = {
 export function mascot(): string {
   // Use exclusively full blocks (█) to prevent tearing from varying terminal line heights
   const ghost = [
-    "      ██      ██    ",
-    "     ████    ████   ",
-    "    ██████████████  ",
-    "    ██          ██  ", // Eyes (White background implied by space)
-    "    ██   ██   ████  ", // Pupils (looking right)
-    "    ██████████████  ",
-    "    ██████████████  ",
-    "    ███  ████  ███  "
-  ].map(s => c.cyan(s))
+    "  ██  ██  ",
+    "██████████",
+    "██  ██  ██",
+    "██ █ ██ █ ██",
+    "██████████",
+    " ██ ██ ██ "
+  ]
 
-  const text = [
-    "  ",
-    "  ",
-    "   █████ █████ █   █ ███   ████ █     ███ ",
-    "     █   █     ██  █  █   █     █      █  ",
-    "     █   ████  █ █ █  █   █     █      █  ",
-    "     █   █     █  ██  █   █     █      █  ",
-    "     █   █████ █   █ ███   ████ █████ ███ ",
-    "  "
+  const textMap = {
+    T: ["█████", "  █  ", "  █  ", "  █  ", "  █  "],
+    E: ["████ ", "█    ", "███  ", "█    ", "████ "],
+    N: ["█  █ ", "██ █ ", "█ ██ ", "█  █ ", "█  █ "],
+    I: ["███", " █ ", " █ ", " █ ", "███"],
+    space: ["  ", "  ", "  ", "  ", "  "],
+    C: [" ███", "█   ", "█   ", "█   ", " ███"],
+    L: ["█   ", "█   ", "█   ", "█   ", "████"]
+  }
+
+  const letters = [textMap.T, textMap.E, textMap.N, textMap.I, textMap.space, textMap.C, textMap.L, textMap.I]
+  const textLines = ["", "", "", "", ""]
+  for (let l = 0; l < 5; l++) {
+    textLines[l] = letters.map(letter => letter[l]).join("  ")
+  }
+
+  const ghostFormatted = ghost.map(s => c.cyan(s.padEnd(14, ' ')))
+  const textFormatted = [
+    " ".repeat(textLines[0].length), // align to ghost row 2
+    ...textLines
   ].map(s => c.blue(s))
 
-  return ghost.map((gL, i) => `${gL}${text[i]}`).join('\n')
+  return ghostFormatted.map((gL, i) => `${gL} ${textFormatted[i] || ''}`).join('\n')
 }
 
 // ── Output helpers ───────────────────────────────────────────────
@@ -69,7 +78,7 @@ export function header() {
   console.log()
   console.log(mascot())
   console.log()
-  console.log(c.gray('    ──────────────────────────────────────────────────────────────────────'))
+  console.log(c.gray('    ────────────────────────────────────────────────────────────────────────'))
   console.log(c.gray('    type to chat') + ` ${sym.dot} ` + c.gray('/help for commands') + ` ${sym.dot} ` + c.gray('v0.1.0'))
   console.log()
 }
