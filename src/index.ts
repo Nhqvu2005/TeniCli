@@ -557,10 +557,11 @@ async function main() {
         else { console.log(count > 0 ? `  ${sym.ok} Reverted ${count} file changes` : `  ${c.gray('Nothing to undo.')}`) }
       } else {
         const result = fileTracker.undo()
-        if (args.json) { console.log(JSON.stringify({ ok: !!result, file: result ? relative(cfg.cwd, result.path) : null })) }
+        if (args.json) { console.log(JSON.stringify({ ok: !!result, file: result ? relative(cfg.cwd, result.path) : null, warning: result?.warning || null })) }
         else if (!result) { console.log(`  ${c.gray('Nothing to undo.')}`) }
         else {
           const rel = relative(cfg.cwd, result.path)
+          if (result.warning) console.log(`  ${sym.warn} ${c.yellow(result.warning)}`)
           console.log(result.restored ? `  ${sym.ok} Restored: ${c.cyan(rel)}` : `  ${sym.ok} Deleted (was new): ${c.cyan(rel)}`)
         }
       }

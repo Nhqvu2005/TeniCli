@@ -13,6 +13,7 @@ export interface ToolDef {
 interface SnapshotEntry {
   path: string           // absolute file path that was modified
   backup: string | null  // original file content (null = file was new)
+  newContent: string     // the content that was written (for hash comparison)
   newLines: number       // lines in the new version
   time: string           // ISO timestamp
   label: string          // human-readable label
@@ -78,6 +79,7 @@ export class FileTracker {
     const entry: SnapshotEntry = {
       path: absPath,
       backup,
+      newContent,
       newLines: newContent.split('\n').length,
       time: new Date().toISOString(),
       label: backup === null ? `create ${relative(process.cwd(), absPath)}` : `modify ${relative(process.cwd(), absPath)}`,
@@ -105,12 +107,29 @@ export class FileTracker {
     }))
   }
 
-  undo(): { path: string; restored: boolean } | null {
+  undo(): { path: string; restored: boolean; warning?: string } | null {
     const last = this.sessionWrites.pop()
     if (!last) return null
     // Remove from disk
     this.removeEntry(last)
-    // Restore file
+
+    // Safety: detect manual edits since AI wrote this file
+    if (existsSync(last.path)) {
+      const currentContent = readFileSync(last.path, 'utf8')
+      if (currentContent !== last.newContent) {
+        // File was manually edited after AI wrote it — warn but still restore
+        const warning = `File was modified externally since AI edit. Restoring anyway.`
+        if (last.backup !== null) {
+          writeFileSync(last.path, last.backup, 'utf8')
+          return { path: last.path, restored: true, warning }
+        } else {
+          try { unlinkSync(last.path) } catch {}
+          return { path: last.path, restored: false, warning }
+        }
+      }
+    }
+
+    // Normal restore
     if (last.backup !== null) {
       writeFileSync(last.path, last.backup, 'utf8')
       return { path: last.path, restored: true }
@@ -215,6 +234,8 @@ export const TOOLS: ToolDef[] = [
 ]
 
 // ── Security ─────────────────────────────────────────────────────
+import { realpathSync, lstatSync } from 'fs'
+
 const BLOCKED_COMMANDS = [
   'rm -rf /',  'rm -rf ~',  'rm -rf *',
   'del /s /q c:',  'del /s /q d:',
@@ -227,16 +248,51 @@ const BLOCKED_COMMANDS = [
   'mv / ',  'mv ~ ',
 ]
 
+// Shell indirection patterns that could wrap dangerous commands
+const DANGEROUS_PATTERNS = [
+  /\$\(.*\b(rm|del|format|mkfs|dd|shutdown|reboot)\b/i,      // $(rm -rf /)
+  /`.*\b(rm|del|format|mkfs|dd|shutdown|reboot)\b/i,         // `rm -rf /`
+  /\|\s*(sh|bash|cmd|powershell)/i,                          // curl ... | sh
+  /\beval\s/i,                                                // eval "..."
+]
+
 function isBlockedCommand(cmd: string): boolean {
   const lower = cmd.toLowerCase().trim()
-  return BLOCKED_COMMANDS.some(b => lower.startsWith(b) || lower.includes(b))
+  // Direct match
+  if (BLOCKED_COMMANDS.some(b => lower.startsWith(b) || lower.includes(b))) return true
+  // Shell indirection / injection patterns
+  if (DANGEROUS_PATTERNS.some(p => p.test(cmd))) return true
+  return false
 }
 
 function isPathAllowed(filePath: string, cwd: string): boolean {
   const resolved = resolve(filePath)
   const root = resolve(cwd)
-  // Allow writes only within the project root
-  return resolved.startsWith(root)
+
+  // Check if resolved path is within project root
+  if (!resolved.startsWith(root)) return false
+
+  // If path exists, resolve symlinks and re-check real location
+  try {
+    if (existsSync(filePath)) {
+      const stat = lstatSync(filePath)
+      if (stat.isSymbolicLink()) {
+        const real = realpathSync(filePath)
+        if (!real.startsWith(root)) return false
+      }
+    }
+    // Check parent dir for symlinks (path traversal via symlinked dir)
+    const parent = dirname(resolved)
+    if (existsSync(parent)) {
+      const parentStat = lstatSync(parent)
+      if (parentStat.isSymbolicLink()) {
+        const realParent = realpathSync(parent)
+        if (!realParent.startsWith(root)) return false
+      }
+    }
+  } catch {}
+
+  return true
 }
 
 // ── Tool Executors ───────────────────────────────────────────────
@@ -382,9 +438,17 @@ function printDiff(filePath: string, oldContent: string | null, newContent: stri
 
   let lastPrinted = -1
   let additions = 0, deletions = 0
+  const MAX_DIFF_LINES = 200
+  let printed = 0
 
   for (let i = 0; i < diff.length; i++) {
     if (!visibleIndices.has(i)) continue
+
+    if (printed >= MAX_DIFF_LINES) {
+      const remaining = Array.from(visibleIndices).filter(idx => idx > i).length
+      console.log(c.gray(`    ... (${remaining + changedIndices.size - additions - deletions} more lines, diff capped at ${MAX_DIFF_LINES})`))
+      break
+    }
 
     if (lastPrinted !== -1 && i - lastPrinted > 1) {
       console.log(c.gray('    ...'))
@@ -401,6 +465,7 @@ function printDiff(filePath: string, oldContent: string | null, newContent: stri
       console.log(`  ${c.gray(`  ${d.line}`)}`)
     }
     lastPrinted = i
+    printed++
   }
 
   console.log(`  ${c.green(`+${additions}`)} ${c.pink(`-${deletions}`)}`)
