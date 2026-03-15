@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, unlinkSync } from 'fs'
 import { resolve, relative, join, dirname } from 'path'
 import { c, toolLog, sym } from './ui'
 import type { ContentBlock } from './provider'
@@ -9,44 +9,141 @@ export interface ToolDef {
   input_schema: Record<string, any>
 }
 
-// ── File change tracker (for /diff and /undo) ────────────────────
+// ── Snapshot entry on disk ────────────────────────────────────────
+interface SnapshotEntry {
+  path: string           // absolute file path that was modified
+  backup: string | null  // original file content (null = file was new)
+  newLines: number       // lines in the new version
+  time: string           // ISO timestamp
+  label: string          // human-readable label
+}
+
+// ── Persistent File Tracker (disk-backed snapshots) ──────────────
 export class FileTracker {
-  private writes: { path: string; backup: string | null; newLines: number; time: Date }[] = []
+  private snapshotDir: string
+  // In-memory cache for current session (fast access)
+  private sessionWrites: SnapshotEntry[] = []
+
+  constructor(cwd?: string) {
+    const projectRoot = cwd || process.cwd()
+    this.snapshotDir = join(projectRoot, '.tenicli', 'snapshots')
+    if (!existsSync(this.snapshotDir)) mkdirSync(this.snapshotDir, { recursive: true })
+    // Load existing snapshots from disk into memory
+    this.loadFromDisk()
+  }
+
+  private loadFromDisk() {
+    try {
+      const files = readdirSync(this.snapshotDir)
+        .filter(f => f.endsWith('.json'))
+        .sort() // chronological by timestamp filename
+      for (const file of files) {
+        try {
+          const content = readFileSync(join(this.snapshotDir, file), 'utf8')
+          const entry: SnapshotEntry = JSON.parse(content)
+          this.sessionWrites.push(entry)
+        } catch {}
+      }
+    } catch {}
+  }
+
+  private saveEntry(entry: SnapshotEntry): string {
+    const ts = Date.now()
+    const filename = `${ts}.json`
+    const filepath = join(this.snapshotDir, filename)
+    writeFileSync(filepath, JSON.stringify(entry), 'utf8')
+    return filename
+  }
+
+  private removeEntry(entry: SnapshotEntry) {
+    // Find and delete the matching snapshot file from disk
+    try {
+      const files = readdirSync(this.snapshotDir).filter(f => f.endsWith('.json')).sort()
+      // Remove the last one that matches this path (most recent)
+      for (let i = files.length - 1; i >= 0; i--) {
+        try {
+          const content = readFileSync(join(this.snapshotDir, files[i]), 'utf8')
+          const disk: SnapshotEntry = JSON.parse(content)
+          if (disk.path === entry.path && disk.time === entry.time) {
+            unlinkSync(join(this.snapshotDir, files[i]))
+            return
+          }
+        } catch {}
+      }
+    } catch {}
+  }
 
   recordWrite(absPath: string, newContent: string) {
     const backup = existsSync(absPath) ? readFileSync(absPath, 'utf8') : null
-    this.writes.push({
+    const entry: SnapshotEntry = {
       path: absPath,
       backup,
       newLines: newContent.split('\n').length,
-      time: new Date(),
-    })
+      time: new Date().toISOString(),
+      label: backup === null ? `create ${relative(process.cwd(), absPath)}` : `modify ${relative(process.cwd(), absPath)}`,
+    }
+    this.sessionWrites.push(entry)
+    this.saveEntry(entry)
   }
 
   getChanges(): { path: string; isNew: boolean; lines: number; time: Date }[] {
     const seen = new Map<string, { isNew: boolean; lines: number; time: Date }>()
-    for (const w of this.writes) {
-      seen.set(w.path, { isNew: w.backup === null, lines: w.newLines, time: w.time })
+    for (const w of this.sessionWrites) {
+      seen.set(w.path, { isNew: w.backup === null, lines: w.newLines, time: new Date(w.time) })
     }
     return Array.from(seen.entries()).map(([path, info]) => ({ path, ...info }))
   }
 
+  /** Get full timeline (all individual actions, not deduplicated) */
+  getTimeline(): { path: string; isNew: boolean; lines: number; time: Date; label: string }[] {
+    return this.sessionWrites.map(w => ({
+      path: w.path,
+      isNew: w.backup === null,
+      lines: w.newLines,
+      time: new Date(w.time),
+      label: w.label,
+    }))
+  }
+
   undo(): { path: string; restored: boolean } | null {
-    const last = this.writes.pop()
+    const last = this.sessionWrites.pop()
     if (!last) return null
+    // Remove from disk
+    this.removeEntry(last)
+    // Restore file
     if (last.backup !== null) {
       writeFileSync(last.path, last.backup, 'utf8')
       return { path: last.path, restored: true }
     } else {
-      // File was new — delete it
-      try { require('fs').unlinkSync(last.path) } catch {}
+      try { unlinkSync(last.path) } catch {}
       return { path: last.path, restored: false }
     }
   }
 
-  get count() { return this.writes.length }
+  undoAll(): number {
+    let count = 0
+    while (this.sessionWrites.length > 0) {
+      this.undo()
+      count++
+    }
+    return count
+  }
 
-  clear() { this.writes = [] }
+  get count() { return this.sessionWrites.length }
+
+  clear() {
+    // Clear in-memory only (disk snapshots stay for cross-session undo)
+    this.sessionWrites = []
+  }
+
+  /** Purge all snapshots from disk */
+  purge() {
+    try {
+      const files = readdirSync(this.snapshotDir).filter(f => f.endsWith('.json'))
+      for (const f of files) { try { unlinkSync(join(this.snapshotDir, f)) } catch {} }
+    } catch {}
+    this.sessionWrites = []
+  }
 }
 
 export const fileTracker = new FileTracker()

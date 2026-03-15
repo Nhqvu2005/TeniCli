@@ -27,7 +27,7 @@ function parseArgs(args: string[]) {
   // Detect subcommand (first non-flag argument)
   if (args[0] && !args[0].startsWith('-')) {
     const sub = args[0].toLowerCase()
-    if (['run', 'diff', 'undo', 'log', 'chat', 'serve'].includes(sub)) {
+    if (['run', 'diff', 'undo', 'log', 'chat', 'remote', 'serve'].includes(sub)) {
       o.command = sub
       i = 1
     }
@@ -35,8 +35,8 @@ function parseArgs(args: string[]) {
 
   while (i < args.length) {
     switch (args[i]) {
-      // Legacy compat: `teni serve` was already handled above
-      case 'serve': o.command = 'serve'; break
+      // Legacy compat
+      case 'serve': case 'remote': o.command = 'remote'; break
       case '--port': o.port = parseInt(args[++i]); break
       case '--password': o.password = args[++i]; break
       case '-p': case '--print':
@@ -68,10 +68,10 @@ ${c.bold('COMMANDS')}
   teni                       Interactive chat (default)
   teni chat                  Same as above
   teni run "<prompt>"         Non-interactive: execute and exit
-  teni diff                  Show files changed by AI in this session
+  teni diff                  Show files changed by AI
   teni undo [--all]          Revert last AI file change (or all)
-  teni log                   List AI actions with timestamps
-  teni serve                 Start web remote server
+  teni log                   List all AI actions with timestamps
+  teni remote                Start web remote server
 
 ${c.bold('GLOBAL FLAGS')}
   -m, --model <model>     Override model
@@ -82,7 +82,7 @@ ${c.bold('GLOBAL FLAGS')}
   -v, --version           Show version
   -h, --help              Show help
 
-${c.bold('SERVE FLAGS')}
+${c.bold('REMOTE FLAGS')}
   --port <port>           Server port (default: 3000)
   --password <pw>         Access password (auto-generated if omitted)
 
@@ -502,7 +502,7 @@ async function main() {
 
   // ── Subcommand routing ──
   switch (args.command) {
-    case 'serve': {
+    case 'remote': {
       const port = args.port || 3000
       const password = args.password || randomBytes(6).toString('hex')
       const { startServer } = await import('./server')
@@ -552,11 +552,7 @@ async function main() {
 
     case 'undo': {
       if (args.all) {
-        let count = 0
-        while (fileTracker.count > 0) {
-          fileTracker.undo()
-          count++
-        }
+        const count = fileTracker.undoAll()
         if (args.json) { console.log(JSON.stringify({ ok: true, reverted: count })) }
         else { console.log(count > 0 ? `  ${sym.ok} Reverted ${count} file changes` : `  ${c.gray('Nothing to undo.')}`) }
       } else {
@@ -572,18 +568,19 @@ async function main() {
     }
 
     case 'log': {
-      const changes = fileTracker.getChanges()
+      const timeline = fileTracker.getTimeline()
       if (args.json) {
-        console.log(JSON.stringify({ actions: changes.map(f => ({ path: relative(cfg.cwd, f.path), isNew: f.isNew, lines: f.lines, time: f.time.toISOString() })) }))
-      } else if (changes.length === 0) {
-        console.log(`  ${c.gray('No AI actions in this session.')}`)
+        console.log(JSON.stringify({ actions: timeline.map(f => ({ path: relative(cfg.cwd, f.path), label: f.label, lines: f.lines, time: f.time.toISOString() })) }))
+      } else if (timeline.length === 0) {
+        console.log(`  ${c.gray('No AI actions recorded.')}`)
       } else {
-        console.log(`\n  ${c.bold('AI Action Log:')}`)
-        for (const f of changes) {
+        console.log(`\n  ${c.bold('AI Action Timeline:')}  ${c.gray(`(${timeline.length} snapshots)`)}`)
+        for (let i = 0; i < timeline.length; i++) {
+          const f = timeline[i]
           const rel = relative(cfg.cwd, f.path)
           const tag = f.isNew ? c.green('CREATE') : c.yellow('MODIFY')
           const time = f.time.toLocaleTimeString()
-          console.log(`    ${c.gray(time)}  ${tag}  ${c.cyan(rel)}  ${c.gray(`(${f.lines} lines)`)}`)
+          console.log(`    ${c.gray(`#${i + 1}`)}  ${c.gray(time)}  ${tag}  ${c.cyan(rel)}  ${c.gray(`(${f.lines} lines)`)}`)
         }
       }
       process.exit(0)
