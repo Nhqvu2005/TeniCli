@@ -278,12 +278,119 @@ function execReadFile(input: Record<string, any>, cwd: string): string {
   return content
 }
 
+// ── Inline Diff Display ──────────────────────────────────────────
+function computeDiff(oldLines: string[], newLines: string[]): { type: 'same' | 'add' | 'del'; line: string }[] {
+  // Simple LCS-based diff for reasonable-sized files
+  const N = oldLines.length, M = newLines.length
+
+  // For very large files, fall back to a simple heuristic
+  if (N * M > 2_000_000) {
+    const result: { type: 'same' | 'add' | 'del'; line: string }[] = []
+    for (const l of oldLines) result.push({ type: 'del', line: l })
+    for (const l of newLines) result.push({ type: 'add', line: l })
+    return result
+  }
+
+  // Build LCS table
+  const dp: number[][] = Array.from({ length: N + 1 }, () => new Array(M + 1).fill(0))
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= M; j++) {
+      dp[i][j] = oldLines[i - 1] === newLines[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1])
+    }
+  }
+
+  // Backtrack to produce diff
+  const result: { type: 'same' | 'add' | 'del'; line: string }[] = []
+  let i = N, j = M
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      result.push({ type: 'same', line: oldLines[i - 1] })
+      i--; j--
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.push({ type: 'add', line: newLines[j - 1] })
+      j--
+    } else {
+      result.push({ type: 'del', line: oldLines[i - 1] })
+      i--
+    }
+  }
+  return result.reverse()
+}
+
+function printDiff(filePath: string, oldContent: string | null, newContent: string, cwd: string) {
+  const rel = relative(cwd, filePath)
+  const header = `  ${c.dim('──')} ${c.cyan(rel)} ${c.dim('─'.repeat(Math.max(2, 50 - rel.length)))}`
+  console.log(header)
+
+  if (oldContent === null) {
+    // Brand new file
+    const lineCount = newContent.split('\n').length
+    console.log(`  ${c.green(`+ (new file, ${lineCount} lines)`)}`)
+    console.log()
+    return
+  }
+
+  const oldLines = oldContent.split('\n')
+  const newLines = newContent.split('\n')
+  const diff = computeDiff(oldLines, newLines)
+
+  // Only show changed lines with some context (up to 3 lines)
+  const CONTEXT = 3
+  const changedIndices = new Set<number>()
+  diff.forEach((d, i) => { if (d.type !== 'same') changedIndices.add(i) })
+
+  if (changedIndices.size === 0) {
+    console.log(`  ${c.gray('(no changes)')}`)
+    console.log()
+    return
+  }
+
+  // Expand context around changes
+  const visibleIndices = new Set<number>()
+  for (const idx of changedIndices) {
+    for (let k = Math.max(0, idx - CONTEXT); k <= Math.min(diff.length - 1, idx + CONTEXT); k++) {
+      visibleIndices.add(k)
+    }
+  }
+
+  let lastPrinted = -1
+  let additions = 0, deletions = 0
+
+  for (let i = 0; i < diff.length; i++) {
+    if (!visibleIndices.has(i)) continue
+
+    if (lastPrinted !== -1 && i - lastPrinted > 1) {
+      console.log(c.gray('    ...'))
+    }
+
+    const d = diff[i]
+    if (d.type === 'del') {
+      console.log(`  ${c.pink(`- ${d.line}`)}`)
+      deletions++
+    } else if (d.type === 'add') {
+      console.log(`  ${c.green(`+ ${d.line}`)}`)
+      additions++
+    } else {
+      console.log(`  ${c.gray(`  ${d.line}`)}`)
+    }
+    lastPrinted = i
+  }
+
+  console.log(`  ${c.green(`+${additions}`)} ${c.pink(`-${deletions}`)}`)
+  console.log()
+}
+
 function execWriteFile(input: Record<string, any>, cwd: string): string {
   const fp = resolvePath(input.path, cwd)
   const dir = dirname(fp)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  const oldContent = existsSync(fp) ? readFileSync(fp, 'utf8') : null
   fileTracker.recordWrite(fp, input.content)
   writeFileSync(fp, input.content, 'utf8')
+  // Show inline diff
+  printDiff(fp, oldContent, input.content, cwd)
   return `Written ${input.content.split('\n').length} lines to ${input.path}`
 }
 
