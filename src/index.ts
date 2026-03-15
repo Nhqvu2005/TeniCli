@@ -14,21 +14,42 @@ const VERSION = pkg.version
 
 // ── Args ─────────────────────────────────────────────────────────
 function parseArgs(args: string[]) {
-  const o: Record<string, any> = { prompt: '', print: false }
+  const o: Record<string, any> = {
+    command: 'chat',  // default subcommand
+    prompt: '',
+    print: false,
+    json: false,
+    yes: false,
+    quiet: false,
+  }
   let i = 0
+
+  // Detect subcommand (first non-flag argument)
+  if (args[0] && !args[0].startsWith('-')) {
+    const sub = args[0].toLowerCase()
+    if (['run', 'diff', 'undo', 'log', 'chat', 'serve'].includes(sub)) {
+      o.command = sub
+      i = 1
+    }
+  }
+
   while (i < args.length) {
     switch (args[i]) {
-      case 'serve':
-        o.serve = true
-        break
+      // Legacy compat: `teni serve` was already handled above
+      case 'serve': o.command = 'serve'; break
       case '--port': o.port = parseInt(args[++i]); break
       case '--password': o.password = args[++i]; break
       case '-p': case '--print':
         o.print = true
+        o.command = 'run'
         if (i + 1 < args.length && !args[i + 1].startsWith('-')) o.prompt = args[++i]
         break
       case '-m': case '--model': o.model = args[++i]; break
       case '--base-url': o.baseUrl = args[++i]; break
+      case '--json': o.json = true; break
+      case '-y': case '--yes': o.yes = true; break
+      case '-q': case '--quiet': o.quiet = true; break
+      case '--all': o.all = true; break
       case '-v': case '--version': console.log(`teni v${VERSION}`); process.exit(0)
       case '-h': case '--help': showHelp(); process.exit(0)
       default:
@@ -41,32 +62,44 @@ function parseArgs(args: string[]) {
 
 function showHelp() {
   console.log(`
-${c.bold(c.blue('TeniCLI'))} — Lightweight AI Coding Agent
+${c.bold(c.blue('TeniCLI'))} v${VERSION} — Lightweight AI Coding Agent
 
-${c.bold('USAGE')}
-  teni                     Start chatting
-  teni "prompt"            Start with a prompt
-  teni -p "prompt"         Non-interactive mode
-  teni serve               Start web remote server
+${c.bold('COMMANDS')}
+  teni                       Interactive chat (default)
+  teni chat                  Same as above
+  teni run "<prompt>"         Non-interactive: execute and exit
+  teni diff                  Show files changed by AI in this session
+  teni undo [--all]          Revert last AI file change (or all)
+  teni log                   List AI actions with timestamps
+  teni serve                 Start web remote server
 
-${c.bold('OPTIONS')}
-  -p, --print <prompt>  Print response and exit
-  -m, --model <model>   Override model
-  --base-url <url>      Override API base URL
-  -v, --version         Show version
-  -h, --help            Show help
+${c.bold('GLOBAL FLAGS')}
+  -m, --model <model>     Override model
+  --base-url <url>        Override API base URL
+  --json                  Machine-readable JSON output
+  -y, --yes               Skip all confirmation prompts
+  -q, --quiet             Suppress non-essential output
+  -v, --version           Show version
+  -h, --help              Show help
 
-${c.bold('SERVE OPTIONS')}
-  --port <port>         Server port (default: 3000)
-  --password <pw>       Access password (auto-generated if omitted)
+${c.bold('SERVE FLAGS')}
+  --port <port>           Server port (default: 3000)
+  --password <pw>         Access password (auto-generated if omitted)
 
-${c.bold('IN-CHAT')}
-  /model   Select model     /auth    Set API key
-  /mode    Ask/Auto toggle  /compact Summarize chat
-  /diff    Files changed    /undo    Revert last write
-  /init    Create TENICLI.md  /clear New conversation
-  /update  Update tenicli   /cost    Token usage
-  /exit    Quit             \\\\       Multiline input
+${c.bold('IN-CHAT COMMANDS')}
+  /model   Change model      /auth    Set API key
+  /mode    Ask/Auto toggle   /compact Summarize chat
+  /diff    Files changed     /undo    Revert last write
+  /init    Create TENICLI.md /clear   New conversation
+  /update  Update tenicli    /cost    Token usage
+  /remote  Remote access     /quota   API rate limits
+  /exit    Quit
+
+${c.bold('EXIT CODES')}
+  0  Success
+  1  API/runtime error
+  2  User abort
+  3  Tool execution failure
 `)
 }
 
@@ -467,25 +500,100 @@ async function main() {
   if (args.model) cfg.provider.model = args.model
   if (args.baseUrl) cfg.provider.baseUrl = args.baseUrl
 
-  // Serve mode — start web server
-  if (args.serve) {
-    const port = args.port || 3000
-    const password = args.password || randomBytes(6).toString('hex')
-    const { startServer } = await import('./server')
-    startServer(port, password)
-    return
+  // ── Subcommand routing ──
+  switch (args.command) {
+    case 'serve': {
+      const port = args.port || 3000
+      const password = args.password || randomBytes(6).toString('hex')
+      const { startServer } = await import('./server')
+      startServer(port, password)
+      return
+    }
+
+    case 'run': {
+      if (!args.prompt) { errorLog('Usage: teni run "<prompt>"'); process.exit(1) }
+      if (!cfg.provider.apiKey) { errorLog('No API key. Run: teni then /auth'); process.exit(1) }
+      const session = new ChatSession(cfg)
+      if (args.yes) session.autoMode = true
+      await session.send(args.prompt)
+      // Output JSON summary if requested
+      if (args.json) {
+        const changes = fileTracker.getChanges()
+        console.log(JSON.stringify({
+          ok: true,
+          tokens: session.stats,
+          filesChanged: changes.map(f => ({
+            path: relative(cfg.cwd, f.path),
+            isNew: f.isNew,
+            lines: f.lines,
+          })),
+        }))
+      }
+      process.exit(0)
+    }
+
+    case 'diff': {
+      const changes = fileTracker.getChanges()
+      if (args.json) {
+        console.log(JSON.stringify({ files: changes.map(f => ({ path: relative(cfg.cwd, f.path), isNew: f.isNew, lines: f.lines })) }))
+      } else if (changes.length === 0) {
+        console.log(`  ${c.gray('No files changed in this session.')}`)
+      } else {
+        console.log(`\n  ${c.bold('Files changed this session:')}`)
+        for (const f of changes) {
+          const rel = relative(cfg.cwd, f.path)
+          const tag = f.isNew ? c.green('[NEW]') : c.yellow('[MOD]')
+          console.log(`    ${tag} ${c.cyan(rel)} ${c.gray(`(${f.lines} lines)`)}`)
+        }
+        console.log(`  ${c.gray(`total: ${changes.length} files`)}`)
+      }
+      process.exit(0)
+    }
+
+    case 'undo': {
+      if (args.all) {
+        let count = 0
+        while (fileTracker.count > 0) {
+          fileTracker.undo()
+          count++
+        }
+        if (args.json) { console.log(JSON.stringify({ ok: true, reverted: count })) }
+        else { console.log(count > 0 ? `  ${sym.ok} Reverted ${count} file changes` : `  ${c.gray('Nothing to undo.')}`) }
+      } else {
+        const result = fileTracker.undo()
+        if (args.json) { console.log(JSON.stringify({ ok: !!result, file: result ? relative(cfg.cwd, result.path) : null })) }
+        else if (!result) { console.log(`  ${c.gray('Nothing to undo.')}`) }
+        else {
+          const rel = relative(cfg.cwd, result.path)
+          console.log(result.restored ? `  ${sym.ok} Restored: ${c.cyan(rel)}` : `  ${sym.ok} Deleted (was new): ${c.cyan(rel)}`)
+        }
+      }
+      process.exit(0)
+    }
+
+    case 'log': {
+      const changes = fileTracker.getChanges()
+      if (args.json) {
+        console.log(JSON.stringify({ actions: changes.map(f => ({ path: relative(cfg.cwd, f.path), isNew: f.isNew, lines: f.lines, time: f.time.toISOString() })) }))
+      } else if (changes.length === 0) {
+        console.log(`  ${c.gray('No AI actions in this session.')}`)
+      } else {
+        console.log(`\n  ${c.bold('AI Action Log:')}`)
+        for (const f of changes) {
+          const rel = relative(cfg.cwd, f.path)
+          const tag = f.isNew ? c.green('CREATE') : c.yellow('MODIFY')
+          const time = f.time.toLocaleTimeString()
+          console.log(`    ${c.gray(time)}  ${tag}  ${c.cyan(rel)}  ${c.gray(`(${f.lines} lines)`)}`)
+        }
+      }
+      process.exit(0)
+    }
   }
 
+  // ── Interactive chat mode ('chat' or bare `teni`) ──
   const session = new ChatSession(cfg)
+  if (args.yes) session.autoMode = true
 
-  // Non-interactive
-  if (args.print && args.prompt) {
-    if (!cfg.provider.apiKey) { errorLog('No API key. Run: teni then /auth'); process.exit(1) }
-    await session.send(args.prompt)
-    process.exit(0)
-  }
-
-  // Interactive — go straight to chat
   header(VERSION)
   const modelName = MODELS.find(m => m.id === cfg.provider.model)?.name || cfg.provider.model
   const modeLabel = session.autoMode ? c.yellow('auto') : c.green('ask')
