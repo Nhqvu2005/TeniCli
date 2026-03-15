@@ -214,6 +214,31 @@ export const TOOLS: ToolDef[] = [
   },
 ]
 
+// ── Security ─────────────────────────────────────────────────────
+const BLOCKED_COMMANDS = [
+  'rm -rf /',  'rm -rf ~',  'rm -rf *',
+  'del /s /q c:',  'del /s /q d:',
+  'format c:',  'format d:',
+  'mkfs',  'dd if=',
+  'shutdown',  'reboot',
+  ':(){:|:&};:',  // fork bomb
+  'chmod -R 777 /',
+  '> /dev/sda',
+  'mv / ',  'mv ~ ',
+]
+
+function isBlockedCommand(cmd: string): boolean {
+  const lower = cmd.toLowerCase().trim()
+  return BLOCKED_COMMANDS.some(b => lower.startsWith(b) || lower.includes(b))
+}
+
+function isPathAllowed(filePath: string, cwd: string): boolean {
+  const resolved = resolve(filePath)
+  const root = resolve(cwd)
+  // Allow writes only within the project root
+  return resolved.startsWith(root)
+}
+
 // ── Tool Executors ───────────────────────────────────────────────
 const MAX_OUTPUT = 30000 // Truncate large outputs
 
@@ -384,6 +409,12 @@ function printDiff(filePath: string, oldContent: string | null, newContent: stri
 
 function execWriteFile(input: Record<string, any>, cwd: string): string {
   const fp = resolvePath(input.path, cwd)
+  // Security: block writes outside project root
+  if (!isPathAllowed(fp, cwd)) {
+    const msg = `BLOCKED: Cannot write outside project root. Path "${input.path}" resolves outside "${cwd}"`
+    console.log(`  ${c.pink(`⛔ ${msg}`)}`)
+    return msg
+  }
   const dir = dirname(fp)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   const oldContent = existsSync(fp) ? readFileSync(fp, 'utf8') : null
@@ -481,6 +512,12 @@ async function execSearchFiles(input: Record<string, any>, cwd: string): Promise
 }
 
 async function execCommand(input: Record<string, any>, cwd: string): Promise<string> {
+  // Security: block dangerous commands
+  if (isBlockedCommand(input.command)) {
+    const msg = `BLOCKED: Dangerous command rejected: "${input.command}"`
+    console.log(`  ${c.pink(`⛔ ${msg}`)}`)
+    return msg
+  }
   const dir = resolvePath(input.cwd || '.', cwd)
 
   const isWindows = process.platform === 'win32'
